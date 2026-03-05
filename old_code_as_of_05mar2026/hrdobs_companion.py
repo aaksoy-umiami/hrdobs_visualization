@@ -15,21 +15,20 @@ if 'selected_tab_index' not in st.session_state:
 
 tab_col_space1, tab_col1, tab_col2, tab_col_space2 = st.columns([0.05, 1, 1, 0.05])
 
-# Swapped order and renamed tabs
 with tab_col1:
-    if st.button("🌍 Dataset Explorer", type="primary" if st.session_state.selected_tab_index == 0 else "secondary", use_container_width=True):
+    if st.button("📊 File Data Viewer", type="primary" if st.session_state.selected_tab_index == 0 else "secondary", use_container_width=True):
         st.session_state.selected_tab_index = 0
         st.rerun()
 
 with tab_col2:
-    if st.button("📊 Single File Plotter", type="primary" if st.session_state.selected_tab_index == 1 else "secondary", use_container_width=True):
+    if st.button("🌍 Global Dataset Explorer", type="primary" if st.session_state.selected_tab_index == 1 else "secondary", use_container_width=True):
         st.session_state.selected_tab_index = 1
         st.rerun()
 
-# Route to the appropriate tab module based on the new swapped indices
+# Route to the appropriate tab module
 if st.session_state.selected_tab_index == 0:
-    render_explorer_tab()
-elif st.session_state.selected_tab_index == 1:
     render_viewer_tab()
+elif st.session_state.selected_tab_index == 1:
+    render_explorer_tab()
 
 render_footer()

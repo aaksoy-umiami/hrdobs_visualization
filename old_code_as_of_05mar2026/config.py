@@ -51,14 +51,3 @@ GLOBAL_VAR_CONFIG = {
     'height':   {'colorscale': 'Earth', 'hide': False},
     'altitude': {'colorscale': 'Earth', 'hide': False}
 }
-
-# --- AUTOMATIC UNIT CONVERSIONS ---
-# The data loader will intercept these units, multiply the data by the factor,
-# and overwrite the unit string so the rest of the app displays it correctly.
-UNIT_CONVERSIONS = {
-    'Pa': {'multiplier': 0.01, 'new_unit': 'hPa'},
-    'Pascals': {'multiplier': 0.01, 'new_unit': 'hPa'},
-    'kg/kg': {'multiplier': 1000.0, 'new_unit': 'g/kg'},
-    'kg kg-1': {'multiplier': 1000.0, 'new_unit': 'g/kg'},
-    'kg kg**-1': {'multiplier': 1000.0, 'new_unit': 'g/kg'}
-}

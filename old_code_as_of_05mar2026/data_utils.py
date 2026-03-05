@@ -59,7 +59,7 @@ def load_inventory_db(db_path):
     df['Basin'] = df['Filename'].apply(get_basin_from_filename)
     df['Constructed_File_Name'] = df['Filename']
     
-    extracted = df['Filename'].str.extract(r'[_\.](?P<Year>\d{4})(?P<Cycle>\d{6})')
+    extracted = df['Filename'].str.extract(r'\.(?P<Year>\d{4})(?P<Cycle>\d{6})')
     df['Year'] = extracted['Year']
     df['Cycle_Raw'] = extracted['Cycle']
     df['Cycle_Display'] = df['Cycle_Raw'].str[-6:-4] + '/' + df['Cycle_Raw'].str[-4:-2] + '\xa0' + df['Cycle_Raw'].str[-2:] + 'Z'
@@ -96,76 +96,35 @@ def load_data_from_h5(file_bytes):
         
     def _find_center_in_attrs(attrs):
         if 'center_from_tc_vitals' in attrs:
-            raw_val = attrs['center_from_tc_vitals']
-            
-            # 1. If it's literally a numeric array/list (not a string)
-            if hasattr(raw_val, '__iter__') and not isinstance(raw_val, (str, bytes)):
-                try:
-                    return float(raw_val[0]), float(raw_val[1])
-                except (ValueError, TypeError, IndexError):
-                    pass
-            
-            val_str = _safe_val(raw_val).upper()
-            
-            # 2. Try to parse as a stringified numeric vector/list: "[20.5, -60.2]" or "20.5, -60.2"
-            import re
-            m = re.search(r'\[?\s*([-+]?\d*\.?\d+)[\s,]+([-+]?\d*\.?\d+)\s*\]?', val_str)
-            if m:
-                lat_val = float(m.group(1))
-                lon_val = float(m.group(2))
-                if lon_val > 180: lon_val -= 360
-                if -90 <= lat_val <= 90 and -180 <= lon_val <= 180:
-                    return lat_val, lon_val
+            val_str = _safe_val(attrs['center_from_tc_vitals']).upper()
+            matches = re.findall(r"([-+]?\d+(?:\.\d+)?)\s*([NSEW]?)", val_str)
+            if len(matches) >= 2:
+                lat_val = float(matches[0][0])
+                if matches[0][1] == 'S': lat_val = -lat_val
 
-            # 3. Legacy string parsing fallback (e.g., "15.0N 75.5W")
-            coords = []
-            used = set()
-            for m in re.finditer(
-                r'([-+]?\d+(?:\.\d+)?)\s*([NSEW])|([NSEW])\s*([-+]?\d+(?:\.\d+)?)',
-                val_str
-            ):
-                if m.start() in used:
-                    continue
-                used.add(m.start())
-                if m.group(1):          # number-then-letter: 15.0N
-                    coords.append((float(m.group(1)), m.group(2)))
-                else:                   # letter-then-number: N15.0
-                    coords.append((float(m.group(4)), m.group(3)))
-            if len(coords) >= 2:
-                lat_val = coords[0][0] * (-1 if coords[0][1] == 'S' else 1)
-                lon_val = coords[1][0] * (-1 if coords[1][1] == 'W' else 1)
+                lon_val = float(matches[1][0])
+                if matches[1][1] == 'W': lon_val = -lon_val
                 if lon_val > 180: lon_val -= 360
-                if -90 <= lat_val <= 90 and -180 <= lon_val <= 180:
-                    return lat_val, lon_val
-                
-        # 4. EXPLICIT FALLBACK: Average of geospatial bounding box
-        try:
-            attr_map = {k.lower(): k for k in attrs.keys()}
-            
-            def get_bound(key_name):
-                if key_name in attr_map:
-                    val = _safe_float(attrs[attr_map[key_name]])
-                    return val
-                return None
-                
-            lat_min = get_bound('geospatial_lat_min')
-            lat_max = get_bound('geospatial_lat_max')
-            lon_min = get_bound('geospatial_lon_min')
-            lon_max = get_bound('geospatial_lon_max')
-            
-            if all(v is not None for v in [lat_min, lat_max, lon_min, lon_max]):
-                lat_avg = (lat_min + lat_max) / 2.0
-                lon_avg = (lon_min + lon_max) / 2.0
-                
-                if lon_avg > 180: lon_avg -= 360
-                
-                if -90 <= lat_avg <= 90 and -180 <= lon_avg <= 180:
-                    return lat_avg, lon_avg
-        except Exception:
-            pass
 
-        # If we reach here, no valid center or bounds were found.
-        return None
+                return lat_val, lon_val
+                
+        lat, lon = None, None
+        attr_map = {k.lower(): k for k in attrs.keys()}
+        for c in ['metadata_best_track_lat', 'best_track_lat', 'stormcenterlat', 'center_lat', 'lat']:
+            for k in attr_map:
+                if c in k:
+                    v = _safe_float(attrs[k])
+                    if v: lat=v; break
+            if lat: break
+        for c in ['metadata_best_track_lon', 'best_track_lon', 'stormcenterlon', 'center_lon', 'lon']:
+            for k in attr_map:
+                if c in k:
+                    v = _safe_float(attrs[k])
+                    if v: lon=v; break
+            if lon: break
+            
+        if lon is not None and lon > 180: lon -= 360
+        return (lat, lon) if (lat and lon) else None
 
     with tempfile.NamedTemporaryFile(delete=False, suffix='.hdf5') as tmp_file:
         tmp_file.write(file_bytes)
@@ -210,20 +169,6 @@ def load_data_from_h5(file_bytes):
                 if c.lower() in ['lat', 'latitude', 'ilat', 'clat']: rename_map[c] = 'lat'
                 if c.lower() in ['lon', 'longitude', 'ilon', 'clon']: rename_map[c] = 'lon'
             if rename_map: df.rename(columns=rename_map, inplace=True)
-
-            # ---> NEW: Apply Global Unit Conversions <---
-            from config import UNIT_CONVERSIONS
-            for dset in df.columns:
-                if dset in group_var_attrs:
-                    u_raw = group_var_attrs[dset].get('units', '')
-                    u_str = _safe_val(u_raw).strip().lower() # Convert to lowercase for safe matching
-                    
-                    # Check against lowercase keys in the config
-                    for target_unit, rule in UNIT_CONVERSIONS.items():
-                        if u_str == target_unit.lower():
-                            df[dset] = df[dset] * rule['multiplier']
-                            group_var_attrs[dset]['units'] = rule['new_unit']
-                            break
             
             if 'track' in key.lower():
                 track_df = df
