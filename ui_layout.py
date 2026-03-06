@@ -13,15 +13,18 @@ values inline.  When a colour or size needs to change, this is the only file
 that requires editing.
 
 Colour palette
-  CLR_PRIMARY   – black; tab borders, primary button outlines, plot axis lines and text
-  CLR_ACCENT    – dark grey; secondary button fill, multiselect chip background
-  CLR_MUTED     – mid grey; disabled widget labels, missing inventory items
-  CLR_SUBTLE    – light grey; footer text, subtitle text
-  CLR_SUCCESS   – green; present inventory items
-  CLR_EXTRA     – blue; unexpected/extra inventory items
-  CLR_BG_HEADER – off-white; table header background
-  CLR_PLOT_BG   – white; 2D plot canvas and paper background
-  CLR_PLOT_GRID – light grey; 2D plot axis grid lines
+  CLR_PRIMARY          – black; tab borders, primary button outlines, plot axis lines and text
+  CLR_ACCENT           – dark grey; secondary button fill, multiselect chip background
+  CLR_MUTED            – mid grey; disabled widget labels, missing inventory items
+  CLR_SUBTLE           – light grey; footer text, subtitle text
+  CLR_SUCCESS          – green; present inventory items
+  CLR_EXTRA            – blue; unexpected/extra inventory items
+  CLR_BG_HEADER        – off-white; table header background
+  CLR_PLOT_BG          – white; 2D plot canvas and paper background
+  CLR_PLOT_GRID        – light grey; 2D plot axis grid lines
+  CLR_BTN_LIGHT_BG     – light-gray shading
+  CLR_BTN_LIGHT_BORDER – dark-gray border
+  CLR_BTN_LIGHT_TEXT   – dark text
 
 Font sizes (px)
   FS_LABEL      – 16   sidebar section labels, slider labels
@@ -55,6 +58,10 @@ CLR_SUBTLE    = "#666666"
 CLR_SUCCESS   = "#0c7b20"
 CLR_EXTRA     = "#005bb5"
 CLR_BG_HEADER = "#f0f2f6"
+# Alternate Button Styles (Select All / Deselect All)
+CLR_BTN_LIGHT_BG     = "#e4e6eb"   # light-gray shading
+CLR_BTN_LIGHT_BORDER = "#888888"   # dark-gray border
+CLR_BTN_LIGHT_TEXT   = "#333333"   # dark text
 
 # Font sizes (integer px values for easy arithmetic; CSS strings built below)
 FS_LABEL    = 16
@@ -62,8 +69,8 @@ FS_BODY     = 13
 FS_BUTTON   = 12
 FS_MICRO    = 11   # intentionally smaller: auto-fit domain button labels
 FS_TABLE    = 14   # slightly larger than body for HTML table readability
-FS_TITLE    = 32
-FS_SUBTITLE = 14
+FS_TITLE    = 40
+FS_SUBTITLE = 20
 FS_FOOTER   = 12
 
 # Plotly figure sizes
@@ -87,7 +94,7 @@ def setup_page():
     """Initialise page config and inject all global CSS rules."""
     st.set_page_config(
         page_title="HRDOBS Dataset Explorer & Visualizer | Altug Aksoy",
-        page_icon="🌪️",
+        page_icon="🌀",
         layout="wide",
         initial_sidebar_state="expanded",
         menu_items={
@@ -213,6 +220,32 @@ def setup_page():
         }}
 
         /* ------------------------------------------------------------------ */
+        /* Alternate Button Style (Light shading, dark border)                */
+        /* ------------------------------------------------------------------ */
+        /* Hide the marker's parent container completely */
+        [data-testid="stElementContainer"]:has(.light-btn-marker),
+        .element-container:has(.light-btn-marker) {{
+            display: none !important;
+            height: 0px !important;
+            margin: 0px !important;
+            padding: 0px !important;
+        }}
+
+        /* Apply the alternate style to ANY button inside a column block containing the marker */
+        [data-testid="stHorizontalBlock"]:has(.light-btn-marker) button[kind="secondary"] {{
+            background-color: {CLR_BTN_LIGHT_BG} !important;
+            border: 1px solid {CLR_BTN_LIGHT_BORDER} !important;
+            box-shadow: none !important;
+        }}
+        [data-testid="stHorizontalBlock"]:has(.light-btn-marker) button[kind="secondary"] * {{
+            color: {CLR_BTN_LIGHT_TEXT} !important;
+        }}
+        [data-testid="stHorizontalBlock"]:has(.light-btn-marker) button[kind="secondary"]:hover {{
+            background-color: #e2e6f0 !important;
+            border-color: #555555 !important;
+        }}
+
+        /* ------------------------------------------------------------------ */
         /* Table controls (explorer tab)                                       */
         /* ------------------------------------------------------------------ */
         div[data-testid="stSelectbox"] label p,
@@ -269,7 +302,7 @@ def render_header():
     <div style='text-align: center; margin-bottom: 10px;'>
         <h3 style='color: {CLR_PRIMARY}; margin: 0; padding: 0;
                    font-size: {FS_TITLE}px;'>
-            🌪️ HRDOBS Dataset Explorer & Visualizer
+            HRDOBS Dataset Explorer & Visualizer
         </h3>
         <p style='font-size: {FS_SUBTITLE}px; color: {CLR_SUBTLE}; margin: 0;'>
             Search, filter, and map AI-Ready tropical cyclone observations
@@ -285,7 +318,7 @@ def render_footer():
     st.markdown(
         f"<div style='text-align: center; color: {CLR_SUBTLE}; "
         f"font-size: {FS_FOOTER}px;'>"
-        f"© {datetime.now().year} Altug Aksoy | "
-        f"University of Miami & NOAA/AOML</div>",
+        f"© {datetime.now().year} Altug Aksoy  |  "
+        f"University of Miami/Cooperative Inst. for Marine and Atmospheric Sci.  &  NOAA/Atlantic Oceanographic and Meteorological Lab.</div>",
         unsafe_allow_html=True
     )

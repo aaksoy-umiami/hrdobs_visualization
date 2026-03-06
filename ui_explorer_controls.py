@@ -17,7 +17,7 @@ from typing import List, Tuple, Optional
 
 from config import EXPECTED_GROUPS
 from ui_layout import CLR_MUTED, FS_BODY
-from ui_components import spacer, sidebar_label, multiselect_with_controls
+from ui_components import spacer, sidebar_label, multiselect_with_controls, section_divider
 
 # Conversion constant kept here so both files share the same value
 MS_TO_KTS = 1.94384
@@ -166,7 +166,7 @@ def render_explorer_controls(db_df, has_vars,
                 .dropna().unique()
             )
             multiselect_with_controls(label, avail, key)
-            spacer('sm')
+            section_divider()
 
         # Intensity slider with unit toggle
         col_label, col_radio = st.columns([0.6, 1])

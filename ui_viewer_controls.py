@@ -202,8 +202,20 @@ _VIEWER_STATE_KEYS = [
 ]
 
 
-def _render_file_upload_section(data_pack):
+def render_file_upload_section(data_pack_key, filename_key, state_keys, state_dict_key):
     """Renders the file upload container and returns the (possibly new) data_pack."""
+    data_pack = st.session_state.get(data_pack_key)
+    
+    # Check cross-tab inheritance
+    other_data_key = 'data_pack_analysis' if data_pack_key == 'data_pack' else 'data_pack'
+    other_file_key = 'last_uploaded_filename_analysis' if filename_key == 'last_uploaded_filename' else 'last_uploaded_filename'
+    
+    # If this tab is empty, the other tab has a file, AND we haven't explicitly cleared this tab
+    if data_pack is None and st.session_state.get(other_data_key) is not None and not st.session_state.get(f"cleared_{data_pack_key}"):
+        st.session_state[data_pack_key] = st.session_state[other_data_key]
+        st.session_state[filename_key] = st.session_state[other_file_key]
+        data_pack = st.session_state[data_pack_key]
+
     with st.sidebar.container(border=True):
         st.markdown("### 📁 File Upload")
 
@@ -211,34 +223,42 @@ def _render_file_upload_section(data_pack):
             uploaded_file = st.file_uploader(
                 "Upload an AI-Ready HDF5 file",
                 type=['h5', 'hdf5'],
-                label_visibility="collapsed"
+                label_visibility="collapsed",
+                key=f"uploader_{data_pack_key}"
             )
             if uploaded_file is not None:
-                if st.session_state.get('last_uploaded_filename') != uploaded_file.name:
+                if st.session_state.get(filename_key) != uploaded_file.name:
                     with st.spinner("Processing HDF5..."):
                         try:
                             raw_data_pack = load_data_from_h5(uploaded_file.getvalue())
                             _inject_derived_fields(raw_data_pack)
-                            st.session_state.data_pack = raw_data_pack
-                            st.session_state.last_uploaded_filename = uploaded_file.name
-                            for k in _VIEWER_STATE_KEYS:
+                            st.session_state[data_pack_key] = raw_data_pack
+                            st.session_state[filename_key] = uploaded_file.name
+                            
+                            # Clear the "cleared" flags so the other tab can inherit this new file
+                            st.session_state.pop('cleared_data_pack', None)
+                            st.session_state.pop('cleared_data_pack_analysis', None)
+                            
+                            for k in state_keys:
                                 if k in st.session_state:
                                     del st.session_state[k]
-                            st.session_state.viewer_state = {}
+                            st.session_state[state_dict_key] = {}
                             st.rerun()
                         except Exception as e:
                             st.error(f"Failed to load file: {e}")
                             st.stop()
         else:
-            st.success(f"📂 **File Loaded to Memory:**\n{st.session_state.last_uploaded_filename}")
-            if st.button("🗑️ Clear Memory & Upload New File"):
-                del st.session_state['data_pack']
-                del st.session_state['last_uploaded_filename']
-                st.session_state.viewer_state = {}
+            st.success(f"📂 **File Loaded to Memory:**\n{st.session_state.get(filename_key, 'Unknown')}")
+            if st.button("🗑️ Clear Memory & Upload New File", key=f"clear_{data_pack_key}"):
+                del st.session_state[data_pack_key]
+                if filename_key in st.session_state:
+                    del st.session_state[filename_key]
+                st.session_state[state_dict_key] = {}
+                st.session_state[f"cleared_{data_pack_key}"] = True # Prevent auto-inheriting immediately
                 st.rerun()
 
         # Inventory expanders (only when a file is loaded)
-        current_pack = st.session_state.get('data_pack')
+        current_pack = st.session_state.get(data_pack_key)
         if current_pack is not None:
             with st.expander("🗂️ View Current File Inventory", expanded=False):
                 inventory_html = f"<div style='font-size: {FS_BODY}px; line-height: 1.6; padding: 5px;'>"
@@ -283,7 +303,7 @@ def _render_file_upload_section(data_pack):
                 meta_html += "</table>"
                 st.markdown(meta_html, unsafe_allow_html=True)
 
-    return st.session_state.get('data_pack')
+    return st.session_state.get(data_pack_key)
 
 
 def _render_variable_section(data_pack, plotter):
@@ -785,6 +805,10 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
         # Note: auto-fit domain button sizing is handled by the global CSS in ui_layout.py
 
         b1, b2 = st.columns(2)
+
+        # ---> NEW: Inject marker to style these buttons
+        b1.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
+
         with b1:
             if st.button("🔍 Auto-fit domain", use_container_width=True):
                 temp_df = df_sel.copy()
@@ -940,6 +964,10 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds):
         )
 
         tb1, tb2 = st.columns(2)
+
+        # ---> NEW: Inject marker to style these buttons
+        tb1.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
+
         with tb1:
             if st.button("⏱️ Auto-fit time", use_container_width=True,
                          key='btn_time_fit'):
@@ -1015,8 +1043,15 @@ def render_viewer_controls(plotter) -> ViewerIntent:
     intent = ViewerIntent()
 
     # --- File upload (may trigger st.rerun internally) ---
-    data_pack = st.session_state.get('data_pack')
-    data_pack = _render_file_upload_section(data_pack)
+    if 'viewer_state' not in st.session_state:
+        st.session_state.viewer_state = {}
+
+    data_pack = render_file_upload_section(
+        data_pack_key='data_pack', 
+        filename_key='last_uploaded_filename', 
+        state_keys=_VIEWER_STATE_KEYS, 
+        state_dict_key='viewer_state'
+    )
 
     if data_pack is None:
         return intent   # caller should show the "please upload" message

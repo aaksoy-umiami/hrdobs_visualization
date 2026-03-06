@@ -127,7 +127,14 @@ def multiselect_with_controls(label: str, options: list, key: str):
 
     st.multiselect(label, options, key=key)
 
+    # ---> NEW: Inject an invisible marker to target these specific buttons with our alternate CSS
+    st.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
+
     cb1, cb2 = st.columns(2)
+    
+    # ---> NEW: Inject the invisible marker INSIDE the column block
+    cb1.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
+    
     cb1.button(
         "Select All", type="secondary", use_container_width=True,
         on_click=lambda k=key, a=options: st.session_state.update({k: list(a)}),

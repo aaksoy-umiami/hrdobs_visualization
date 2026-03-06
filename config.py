@@ -19,9 +19,9 @@ EXPECTED_META = [
 
 GLOBAL_VAR_CONFIG = {
     # --- NON-PLOTTABLE COORDINATES & METADATA (Hidden) ---
-    'lat': {'hide': True}, 'lon': {'hide': True}, 'time': {'hide': True},
-    'clat': {'hide': True}, 'clon': {'hide': True}, 
-    'az': {'hide': True}, 'rmw': {'hide': True},
+    'lat': {'hide': True, 'is_coord': True}, 'lon': {'hide': True, 'is_coord': True}, 'time': {'hide': True, 'is_coord': True},
+    'clat': {'hide': True, 'is_coord': True}, 'clon': {'hide': True, 'is_coord': True}, 
+    'az': {'hide': True, 'is_coord': True}, 'rmw': {'hide': True, 'is_coord': True},
     'pmin': {'hide': True}, 'vmax': {'hide': True}, 
     'qerr': {'hide': True}, 'spderr': {'hide': True},
 
@@ -37,19 +37,19 @@ GLOBAL_VAR_CONFIG = {
     'rr':     {'colorscale': 'Blues', 'cmin': 0, 'hide': False}, 
     'q':      {'colorscale': 'YlGnBu', 'cmin': 0, 'hide': False}, 
     't':      {'colorscale': 'Plasma', 'hide': False},           
-    'p':      {'colorscale': 'Viridis_r', 'hide': False},        
-    'sfcp':   {'colorscale': 'Viridis_r', 'hide': False},        
+    'p':      {'colorscale': 'Viridis_r', 'hide': False, 'is_coord': True},        
+    'sfcp':   {'colorscale': 'Viridis_r', 'hide': False, 'is_coord': True},        
     'sfcdir': {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False},
-    'wspd_hz_comp': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False},
-    'wspd_3d_comp': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False},
-    'wind_vec_hz': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False},
-    'wind_vec_3d': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False},
+    'wspd_hz_comp': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_derived': True},
+    'wspd_3d_comp': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_derived': True},
+    'wind_vec_hz':  {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_vector': True},
+    'wind_vec_3d':  {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_vector': True},
     
     # --- VERTICAL MEASUREMENTS (Now Plottable) ---
-    'ght':      {'colorscale': 'Earth', 'hide': False},
-    'elev':     {'colorscale': 'Earth', 'hide': False},
-    'height':   {'colorscale': 'Earth', 'hide': False},
-    'altitude': {'colorscale': 'Earth', 'hide': False}
+    'ght':      {'colorscale': 'Earth', 'hide': False, 'is_coord': True},
+    'elev':     {'colorscale': 'Earth', 'hide': False, 'is_coord': True},
+    'height':   {'colorscale': 'Earth', 'hide': False, 'is_coord': True},
+    'altitude': {'colorscale': 'Earth', 'hide': False, 'is_coord': True}
 }
 
 # --- AUTOMATIC UNIT CONVERSIONS ---
@@ -62,3 +62,6 @@ UNIT_CONVERSIONS = {
     'kg kg-1': {'multiplier': 1000.0, 'new_unit': 'g/kg'},
     'kg kg**-1': {'multiplier': 1000.0, 'new_unit': 'g/kg'}
 }
+
+# --- USER INTERFACE DEFAULTS ---
+DEFAULT_HIST_BINS = 50

@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from config import GLOBAL_VAR_CONFIG
 from data_utils import decode_metadata
-from ui_layout import CLR_PRIMARY, CLR_PLOT_BG, CLR_PLOT_GRID, FS_PLOT_TITLE, FS_PLOT_AXIS, FS_PLOT_TICK, TARGET_PLOT_TICKS
+from ui_layout import CLR_PRIMARY, CLR_PLOT_BG, CLR_PLOT_GRID, FS_PLOT_TITLE, FS_PLOT_AXIS, FS_PLOT_TICK, TARGET_PLOT_TICKS, CLR_EXTRA
 
 # ---------------------------------------------------------------------------
 # Tuneable display constants
@@ -24,7 +24,7 @@ class StormPlotter:
         self.metadata = metadata
         self.var_attrs = var_attrs  
 
-    def get_plottable_variables(self, sel_group, active_z_col=None):
+    def get_plottable_variables(self, sel_group, active_z_col=None, exclude_vectors=False):
         if sel_group not in self.data: return []
         
         df = self.data[sel_group]
@@ -33,20 +33,43 @@ class StormPlotter:
         for col in df.columns:
             if active_z_col and col == active_z_col: continue
             col_lower = col.lower()
-            if GLOBAL_VAR_CONFIG.get(col_lower, {}).get('hide', False): continue
+            cfg = GLOBAL_VAR_CONFIG.get(col_lower, {})
+            if cfg.get('hide', False): continue
+            if exclude_vectors and cfg.get('is_vector', False): continue
             if col_lower.endswith('err'): continue
             if df[col].dtype == 'object': continue
             valid_cols.append(col)
             
         def custom_sort(c):
             c_lower = c.lower()
-            if c_lower == 'wspd_hz_comp': return 'wspd_comp_1'
-            if c_lower == 'wspd_3d_comp': return 'wspd_comp_2'
-            if c_lower == 'wind_vec_hz':  return 'wspd_comp_3'
-            if c_lower == 'wind_vec_3d':  return 'wspd_comp_4'
-            return c_lower
+            cfg = GLOBAL_VAR_CONFIG.get(c_lower, {})
+            if cfg.get('is_coord', False):
+                tier = '2'
+            elif cfg.get('is_derived', False):
+                tier = '1'
+            else:
+                tier = '0'
+            return f'{tier}_{c_lower}'
             
         return sorted(valid_cols, key=custom_sort)
+    
+    def get_coordinate_variables(self, group_name):
+        """Identifies columns that act as coordinates using GLOBAL_VAR_CONFIG."""
+        if group_name not in self.data: return []
+        df = self.data[group_name]
+        valid_coords = []
+        
+        for col in df.columns:
+            c_lower = col.lower()
+            # Ask the dictionary if this column is flagged as a coordinate
+            if GLOBAL_VAR_CONFIG.get(c_lower, {}).get('is_coord', False):
+                valid_coords.append(col)
+                
+        # Fallback: if no strict coordinates are found, return all numeric columns
+        if not valid_coords:
+            valid_coords = [c for c in df.columns if df[c].dtype != 'object']
+            
+        return sorted(valid_coords)
 
     def _get_var_display_name(self, group_name, variable):
         meta = self.var_attrs.get(group_name, {}).get(variable, {})
@@ -494,6 +517,313 @@ class StormPlotter:
                 )
             
         return fig, plot_df
+    
+    def plot_histogram(self, group_name, variable, nbins=None, normalization="None"):
+        if group_name not in self.data: return None
+        
+        df = self.data[group_name].copy()
+        if variable not in df.columns: return None
+
+        plot_df = df.dropna(subset=[variable])
+        if plot_df.empty: return None
+
+        vals = plot_df[variable].values
+
+        display_name = self._get_var_display_name(group_name, variable)
+        nice_title = self._format_title(group_name, variable, "")
+
+        # Handle 1D normalization using Plotly's native histnorm
+        histnorm = 'percent' if normalization == "Full Normalization (all bins sum to 100%)" else None
+        y_axis_title = 'Percentage (%)' if normalization == "Full Normalization (all bins sum to 100%)" else 'Count'
+
+        fig = go.Figure()
+        
+        fig.add_trace(go.Histogram(
+            x=vals,
+            nbinsx=nbins,
+            histnorm=histnorm,
+            marker_color=CLR_EXTRA,
+            opacity=0.85,
+            name=display_name
+        ))
+
+        xaxis_dict = dict(
+            title=display_name,
+            title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
+            tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
+            showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
+            showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True
+        )
+        if variable.lower() == 'p' or 'pres' in variable.lower() or variable.lower().endswith('_p'):
+            xaxis_dict['autorange'] = 'reversed'
+
+        fig.update_layout(
+            title={'text': nice_title, 'y': 0.95, 'x': 0.5, 'xanchor': 'center'},
+            title_font=dict(size=FS_PLOT_TITLE, color=CLR_PRIMARY),
+            width=800, height=600,
+            showlegend=False,
+            xaxis=xaxis_dict,
+            yaxis=dict(
+                title=y_axis_title,
+                title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
+                tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
+                showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
+                showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True
+            ),
+            plot_bgcolor=CLR_PLOT_BG,
+            paper_bgcolor=CLR_PLOT_BG,
+            margin=dict(l=60, r=40, t=80, b=60),
+        )
+        return fig
+    
+    def _compute_2d_normalization(self, x_vals, y_vals, nbinsx, nbinsy, normalization):
+        """Builds a 2D density matrix and applies row/col/full percentage normalization."""
+        nx = nbinsx if nbinsx is not None else 50
+        ny = nbinsy if nbinsy is not None else 50
+        
+        # 1. Compute raw 2D histogram
+        # Note: np.histogram2d returns matrix H where rows=x and cols=y
+        H, xedges, yedges = np.histogram2d(x_vals, y_vals, bins=[nx, ny])
+        
+        # Transpose H so rows=y and cols=x (Standard image/heatmap format)
+        H = H.T
+        
+        # 2. Apply requested normalization math
+        if normalization == "Full Normalization (all bins sum to 100%)":
+            total = H.sum()
+            if total > 0:
+                H = (H / total) * 100.0
+        elif normalization == "Row Normalization (fix Y, sum X to 100%)":
+            # For each fixed Y bin (row), normalize all X bins so they sum to 100%
+            row_sums = H.sum(axis=1, keepdims=True)
+            H = np.divide(H, row_sums, out=np.zeros_like(H), where=row_sums != 0) * 100.0
+        elif normalization == "Column Normalization (fix X, sum Y to 100%)":
+            # For each fixed X bin (col), normalize all Y bins so they sum to 100%
+            col_sums = H.sum(axis=0, keepdims=True)
+            H = np.divide(H, col_sums, out=np.zeros_like(H), where=col_sums != 0) * 100.0
+            
+        # 3. Compute bin centers for the Plotly Heatmap
+        x_centers = (xedges[:-1] + xedges[1:]) / 2
+        y_centers = (yedges[:-1] + yedges[1:]) / 2
+        
+        return H, x_centers, y_centers
+    
+    def plot_histogram_2d(self, group_name, variable, coord_var, nbinsx=None, nbinsy=None, reverse_axes=False, normalization="None"):
+        if group_name not in self.data: return None
+        
+        df = self.data[group_name].copy()
+        if variable not in df.columns or coord_var not in df.columns: return None
+
+        plot_df = df.dropna(subset=[variable, coord_var])
+        if plot_df.empty: return None
+
+        # 1. Resolve axes BEFORE math happens
+        if reverse_axes:
+            x_vals, y_vals = plot_df[variable].values, plot_df[coord_var].values
+            x_name = self._get_var_display_name(group_name, variable)
+            y_name = self._get_var_display_name(group_name, coord_var)
+            x_var_col, y_var_col = variable, coord_var
+        else:
+            x_vals, y_vals = plot_df[coord_var].values, plot_df[variable].values
+            x_name = self._get_var_display_name(group_name, coord_var)
+            y_name = self._get_var_display_name(group_name, variable)
+            x_var_col, y_var_col = coord_var, variable
+
+        nice_title = self._format_title(group_name, y_var_col, f"Binned by {x_name}")
+
+        var_conf = GLOBAL_VAR_CONFIG.get(y_var_col.lower(), {})
+        cmap_name = var_conf.get('colorscale', 'Viridis')
+        
+        try:
+            import plotly.colors
+            base_cmap = plotly.colors.get_colorscale(cmap_name)
+            custom_cmap = []
+            for val, clr in base_cmap:
+                if float(val) == 0.0:
+                    custom_cmap.append([0.0, '#ffffff'])
+                else:
+                    custom_cmap.append([float(val), clr])
+        except Exception:
+            custom_cmap = cmap_name
+
+        # 2. Compute matrix using standalone function
+        H, x_centers, y_centers = self._compute_2d_normalization(x_vals, y_vals, nbinsx, nbinsy, normalization)
+        cb_title = 'Percentage (%)' if normalization != "None" else 'Count'
+
+        fig = go.Figure()
+        
+        # 3. Plot pre-computed matrix as a Heatmap
+        fig.add_trace(go.Heatmap(
+            z=H,
+            x=x_centers,
+            y=y_centers,
+            colorscale=custom_cmap,
+            zmin=0,  
+            colorbar=dict(title=cb_title, len=0.8, thickness=20)
+        ))
+
+        xaxis_dict = dict(
+            title=x_name, 
+            title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
+            tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
+            showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
+            showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True          
+        )
+        yaxis_dict = dict(
+            title=y_name, 
+            title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
+            tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
+            showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
+            showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True          
+        )
+        
+        if x_var_col.lower() == 'p' or 'pres' in x_var_col.lower() or x_var_col.lower().endswith('_p'):
+            xaxis_dict['autorange'] = 'reversed'
+            
+        if y_var_col.lower() == 'p' or 'pres' in y_var_col.lower() or y_var_col.lower().endswith('_p'):
+            yaxis_dict['autorange'] = 'reversed'
+
+        fig.update_layout(
+            title={'text': nice_title, 'y': 0.95, 'x': 0.5, 'xanchor': 'center'},
+            title_font=dict(size=FS_PLOT_TITLE, color=CLR_PRIMARY),
+            width=800, height=600,
+            showlegend=False,
+            xaxis=xaxis_dict,
+            yaxis=yaxis_dict,
+            plot_bgcolor=CLR_PLOT_BG,    
+            paper_bgcolor=CLR_PLOT_BG,   
+            margin=dict(l=60, r=40, t=80, b=60), 
+        )
+        return fig
+
+    def plot_scatter(self, group_name, variable, coord_var, color_mapping="Density", show_trendline=False, reverse_axes=False):
+        """
+        Scatter plot of variable (X-axis) vs coord_var (Y-axis).
+
+        Color mapping modes:
+          Density      -- point density via a 2D histogram, mapped to a sequential colorscale
+          Z-Coordinate -- color by the group's first available coordinate variable
+          Variable     -- color by the X-axis variable value itself
+        """
+        if group_name not in self.data: return None
+
+        df = self.data[group_name].copy()
+        if variable not in df.columns or coord_var not in df.columns: return None
+
+        plot_df = df.dropna(subset=[variable, coord_var])
+        if plot_df.empty: return None
+
+        x_vals = plot_df[variable].values
+        y_vals = plot_df[coord_var].values
+        x_var_col = variable
+        y_var_col = coord_var
+
+        if reverse_axes:
+            x_vals, y_vals = y_vals, x_vals
+            x_var_col, y_var_col = coord_var, variable
+
+        x_name = self._get_var_display_name(group_name, x_var_col)
+        y_name = self._get_var_display_name(group_name, y_var_col)
+        nice_title = self._format_title(group_name, variable, f"vs. {self._get_var_display_name(group_name, coord_var)}")
+
+        # --- Color array ---
+        if color_mapping == "Density":
+            H, xedges, yedges = np.histogram2d(x_vals, y_vals, bins=50)
+            xi = np.clip(np.searchsorted(xedges, x_vals) - 1, 0, H.shape[0] - 1)
+            yi = np.clip(np.searchsorted(yedges, y_vals) - 1, 0, H.shape[1] - 1)
+            color_vals = H[xi, yi]
+            cb_title = "Density"
+            cmap = "Viridis"
+            cmid = None
+        elif color_mapping == "Z-Coordinate":
+            coord_vars = self.get_coordinate_variables(group_name)
+            z_candidates = [c for c in coord_vars if c != coord_var and c != variable]
+            if z_candidates and z_candidates[0] in plot_df.columns:
+                z_col = z_candidates[0]
+                color_vals = plot_df[z_col].values
+                cb_title = self._get_var_display_name(group_name, z_col)
+                var_conf = GLOBAL_VAR_CONFIG.get(z_col.lower(), {})
+            else:
+                H, xedges, yedges = np.histogram2d(x_vals, y_vals, bins=50)
+                xi = np.clip(np.searchsorted(xedges, x_vals) - 1, 0, H.shape[0] - 1)
+                yi = np.clip(np.searchsorted(yedges, y_vals) - 1, 0, H.shape[1] - 1)
+                color_vals = H[xi, yi]
+                cb_title = "Density"
+                var_conf = {}
+            cmap = var_conf.get('colorscale', 'Viridis')
+            cmid = var_conf.get('cmid', None)
+        else:  # "Variable"
+            color_vals = plot_df[variable].values if not reverse_axes else plot_df[coord_var].values
+            cb_title = x_name
+            var_conf = GLOBAL_VAR_CONFIG.get(x_var_col.lower(), {})
+            cmap = var_conf.get('colorscale', 'Viridis')
+            cmid = var_conf.get('cmid', None)
+
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatter(
+            x=x_vals,
+            y=y_vals,
+            mode='markers',
+            marker=dict(
+                size=5,
+                color=color_vals,
+                colorscale=cmap,
+                cmid=cmid,
+                showscale=True,
+                colorbar=dict(title=cb_title, len=0.8, thickness=20,
+                              tickfont=dict(size=FS_PLOT_TICK))
+            ),
+            name=x_name,
+            showlegend=False
+        ))
+
+        # --- Optional trendline (linear least squares) ---
+        if show_trendline:
+            valid = np.isfinite(x_vals) & np.isfinite(y_vals)
+            if valid.sum() >= 2:
+                m, b = np.polyfit(x_vals[valid], y_vals[valid], 1)
+                x_line = np.array([x_vals[valid].min(), x_vals[valid].max()])
+                y_line = m * x_line + b
+                fig.add_trace(go.Scatter(
+                    x=x_line, y=y_line, mode='lines',
+                    line=dict(color=CLR_PRIMARY, width=2, dash='dash'),
+                    name='Trendline', showlegend=False
+                ))
+
+        # --- Axis config with pressure reversal ---
+        xaxis_dict = dict(
+            title=x_name,
+            title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
+            tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
+            showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
+            showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True
+        )
+        yaxis_dict = dict(
+            title=y_name,
+            title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
+            tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
+            showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
+            showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True
+        )
+        if x_var_col.lower() == 'p' or 'pres' in x_var_col.lower() or x_var_col.lower().endswith('_p'):
+            xaxis_dict['autorange'] = 'reversed'
+        if y_var_col.lower() == 'p' or 'pres' in y_var_col.lower() or y_var_col.lower().endswith('_p'):
+            yaxis_dict['autorange'] = 'reversed'
+
+        fig.update_layout(
+            title={'text': nice_title, 'y': 0.95, 'x': 0.5, 'xanchor': 'center'},
+            title_font=dict(size=FS_PLOT_TITLE, color=CLR_PRIMARY),
+            width=800, height=600,
+            showlegend=False,
+            xaxis=xaxis_dict,
+            yaxis=yaxis_dict,
+            plot_bgcolor=CLR_PLOT_BG,
+            paper_bgcolor=CLR_PLOT_BG,
+            margin=dict(l=60, r=40, t=80, b=60),
+        )
+        return fig
+
 
 def add_flight_tracks(fig, data_pack, track_mapping, plot_track, selected_platform, is_3d, is_target_pres, proj_option="Bottom Only", domain_bounds=None):
     for plat, track_group in track_mapping.items():
