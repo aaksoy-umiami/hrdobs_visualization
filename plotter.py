@@ -1582,7 +1582,7 @@ def add_flight_tracks(fig, data_pack, track_mapping, plot_track, selected_platfo
                     
                     if show_sides:
                         lon_wall = domain_bounds['lon_min'] if domain_bounds else track_df[t_lon_c].min()
-                        lat_wall = domain_bounds['lat_min'] if domain_bounds else track_df[t_lat_c].min()
+                        lat_wall = domain_bounds['lat_max'] if domain_bounds else track_df[t_lat_c].max()
                         
                         lon_shadow = np.full_like(track_df[t_lon_c], lon_wall)
                         fig.add_trace(go.Scatter3d(

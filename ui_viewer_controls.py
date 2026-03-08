@@ -191,6 +191,50 @@ def _inject_derived_fields(raw_data_pack):
         }
 
 
+def _compute_global_domain(data_pack):
+    """Scan all groups for lat/lon and store a tight square bounding box
+    in data_pack['global_domain']. Called at file load; also safe to call
+    lazily if missing."""
+    all_lats, all_lons = [], []
+    for grp, df in data_pack['data'].items():
+        if df is None or df.empty:
+            continue
+        cl = {c.lower(): c for c in df.columns}
+        x_c = next((cl[c] for c in ['lon', 'longitude', 'clon'] if c in cl), None)
+        y_c = next((cl[c] for c in ['lat', 'latitude',  'clat'] if c in cl), None)
+        if x_c and y_c:
+            lons = df[x_c].dropna().values
+            lats = df[y_c].dropna().values
+            if len(lons): all_lons.extend(lons.tolist())
+            if len(lats): all_lats.extend(lats.tolist())
+
+    if not all_lats or not all_lons:
+        data_pack['global_domain'] = None
+        return
+
+    span_lat = max(float(np.max(all_lats)) - float(np.min(all_lats)), 0.05)
+    span_lon = max(float(np.max(all_lons)) - float(np.min(all_lons)), 0.05)
+    buf_lat  = span_lat * 0.05
+    buf_lon  = span_lon * 0.05
+    lat_min  = float(np.min(all_lats)) - buf_lat
+    lat_max  = float(np.max(all_lats)) + buf_lat
+    lon_min  = float(np.min(all_lons)) - buf_lon
+    lon_max  = float(np.max(all_lons)) + buf_lon
+    lat_span = lat_max - lat_min
+    lon_span = lon_max - lon_min
+    if lat_span > lon_span:
+        extra = (lat_span - lon_span) / 2
+        lon_min -= extra; lon_max += extra
+    else:
+        extra = (lon_span - lat_span) / 2
+        lat_min -= extra; lat_max += extra
+
+    data_pack['global_domain'] = {
+        'lat_min': round(lat_min, 2), 'lat_max': round(lat_max, 2),
+        'lon_min': round(lon_min, 2), 'lon_max': round(lon_max, 2),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Section renderers — each handles one sidebar container
 # ---------------------------------------------------------------------------
@@ -236,6 +280,7 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                         try:
                             raw_data_pack = load_data_from_h5(uploaded_file.getvalue())
                             _inject_derived_fields(raw_data_pack)
+                            _compute_global_domain(raw_data_pack)
                             st.session_state[data_pack_key] = raw_data_pack
                             st.session_state[filename_key] = uploaded_file.name
                             
@@ -465,13 +510,21 @@ def _render_plot_type_section(data_pack, sel_group, is_3d):
             "Plot Type",
             _PLOT_TYPES,
             key='v_plot_type',
-            disabled=not _sr_available,
+            disabled=False,
             label_visibility="collapsed",
             help="Storm-Relative requires track_spline_track or track_best_track (≥2 points)."
                  " Unavailable in 3D mode."
         )
 
         is_sr = (plot_type == "Horizontal Storm-Relative")
+
+        if not _sr_available and st.session_state.v_plot_type == "Horizontal Cartesian":
+            if is_3d:
+                st.caption("ℹ️ Storm-Relative unavailable in 3D mode.")
+            elif 'TRACK' in sel_group.upper():
+                st.caption("ℹ️ Storm-Relative unavailable for track groups.")
+            elif _sr_grp is None:
+                st.caption("ℹ️ Storm-Relative requires a spline or best track group.")
 
         if 'v_sr_up' not in st.session_state:
             st.session_state.v_sr_up = "Relative to North"
@@ -492,7 +545,7 @@ def _render_plot_type_section(data_pack, sel_group, is_3d):
 
 
 def _render_plotting_options(data_pack, sel_group, h_col, p_col,
-                              df_sel, cols_lower, plot_var):
+                              df_sel, cols_lower, plot_var, plot_type="Horizontal Cartesian"):
     """Renders thinning, level filter, flight track, 3D, marker size controls.
     Returns (show_cen, cen_mode, apply_thinning, thin_pct, z_con, target_col,
              target_col_3d, track_mapping, plot_track, selected_platform, track_proj,
@@ -519,19 +572,24 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col,
                 label_visibility="collapsed"
             )
 
-        # --- NEW LOGIC: Disable and uncheck basemap if 3D is active ---
+        # --- MAP UNDERLAY LOGIC ---
+        is_sr = (plot_type == "Horizontal Storm-Relative")
         is_3d_state = st.session_state.get('v_is_3d', False)
-        if is_3d_state and st.session_state.get('v_show_basemap', False):
+        disable_map = is_3d_state or is_sr
+
+        if disable_map and st.session_state.get('v_show_basemap', False):
             st.session_state.v_show_basemap = False
 
         if 'v_show_basemap' not in st.session_state:
             st.session_state.v_show_basemap = False
             
-        show_basemap = st.checkbox("Show Map Underlay", key='v_show_basemap', disabled=is_3d_state)
+        show_basemap = st.checkbox("Show Map Underlay", key='v_show_basemap', disabled=disable_map)
         
-        # Move the info caption to sit directly underneath the disabled checkbox
+        # Display the appropriate info caption
         if is_3d_state:
             st.caption("ℹ️ Map underlay is disabled in 3D mode.")
+        elif is_sr:
+            st.caption("ℹ️ Map underlay is disabled in Storm-Relative mode.")
             
         section_divider()
 
@@ -770,15 +828,22 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
     with st.sidebar.container(border=True):
         st.markdown("### 🗺️ Plot Domain Limits")
 
+        # Compute global domain lazily if missing
+        if 'global_domain' not in data_pack:
+            _compute_global_domain(data_pack)
+        _gd = data_pack.get('global_domain')
+        _gd_lat = (_gd['lat_min'], _gd['lat_max']) if _gd else (default_lat_min, default_lat_max)
+        _gd_lon = (_gd['lon_min'], _gd['lon_max']) if _gd else (default_lon_min, default_lon_max)
+
         if st.session_state.pop('_force_domain_fit', False):
             if '_force_lat_range' in st.session_state and '_force_lon_range' in st.session_state:
                 forced_lat = st.session_state.pop('_force_lat_range')
                 forced_lon = st.session_state.pop('_force_lon_range')
                 # Clamp to slider bounds so Streamlit accepts the value
-                s_lat_min = default_lat_min - 2.0
-                s_lat_max = default_lat_max + 2.0
-                s_lon_min = default_lon_min - 2.0
-                s_lon_max = default_lon_max + 2.0
+                s_lat_min = st.session_state.get('_slider_lat_bounds', (_gd_lat[0], _gd_lat[1]))[0]
+                s_lat_max = st.session_state.get('_slider_lat_bounds', (_gd_lat[0], _gd_lat[1]))[1]
+                s_lon_min = st.session_state.get('_slider_lon_bounds', (_gd_lon[0], _gd_lon[1]))[0]
+                s_lon_max = st.session_state.get('_slider_lon_bounds', (_gd_lon[0], _gd_lon[1]))[1]
                 st.session_state.v_lat_range = (
                     max(s_lat_min, min(forced_lat[0], s_lat_max)),
                     max(s_lat_min, min(forced_lat[1], s_lat_max))
@@ -802,13 +867,14 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                 except Exception as e:
                     st.warning(f"SR range error: {type(e).__name__}: {e}")
 
-            sr_slider_max = max(sr_default_max * 2.0, 500.0)
+            # Snap the slider's absolute limit to the true max range of the data
+            sr_slider_max = max(sr_default_max, 25.0)
 
             # Apply any pending forced value BEFORE the widget is instantiated
             if '_force_sr_max_range' in st.session_state:
                 st.session_state.v_sr_max_range = st.session_state.pop('_force_sr_max_range')
 
-            # Reset to data-driven default when the group changes
+            # Reset to data-driven default when the group changes, or if forced-cleared
             if st.session_state.get('_sr_last_group') != sel_group:
                 st.session_state.v_sr_max_range = sr_default_max
                 st.session_state['_sr_last_group'] = sel_group
@@ -837,32 +903,34 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                 'lon_min': -180.0, 'lon_max': 180.0,
                 '_sr_max_range_km': sr_max_range,
             }
-            lat_range = (default_lat_min, default_lat_max)
-            lon_range = (default_lon_min, default_lon_max)
+            lat_range = (_gd_lat[0], _gd_lat[1])
+            lon_range = (_gd_lon[0], _gd_lon[1])
 
         else:
             c1, c2, c3, c4 = st.columns([0.7, 2.0, 0.7, 2.0])
             with c1:
                 sidebar_label('Lat:', size='label')
             with c2:
+                _s_lat_min, _s_lat_max = st.session_state.get(
+                    '_slider_lat_bounds', (_gd_lat[0], _gd_lat[1]))
                 if 'v_lat_range' not in st.session_state:
-                    st.session_state.v_lat_range = (default_lat_min, default_lat_max)
+                    st.session_state.v_lat_range = _gd_lat
                 lat_range = st.slider(
                     "Latitude Limits",
-                    min_value=default_lat_min - 2.0,
-                    max_value=default_lat_max + 2.0,
+                    min_value=_s_lat_min, max_value=_s_lat_max,
                     key='v_lat_range', step=0.1,
                     label_visibility="collapsed"
                 )
             with c3:
                 sidebar_label('Lon:', size='label')
             with c4:
+                _s_lon_min, _s_lon_max = st.session_state.get(
+                    '_slider_lon_bounds', (_gd_lon[0], _gd_lon[1]))
                 if 'v_lon_range' not in st.session_state:
-                    st.session_state.v_lon_range = (default_lon_min, default_lon_max)
+                    st.session_state.v_lon_range = _gd_lon
                 lon_range = st.slider(
                     "Longitude Limits",
-                    min_value=default_lon_min - 2.0,
-                    max_value=default_lon_max + 2.0,
+                    min_value=_s_lon_min, max_value=_s_lon_max,
                     key='v_lon_range', step=0.1,
                     label_visibility="collapsed"
                 )
@@ -895,8 +963,6 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                 )
                 if is_pres:
                     zmin_global = float(max(0.0, math.floor(np.nanmin(vert_vals) / 50.0) * 50.0))
-                    # 1015 hPa: round up to the nearest 50 hPa above the standard
-                    # surface pressure ceiling used for pressure-coordinate axes
                     zmax_global = float(max(1015.0, math.ceil(np.nanmax(vert_vals) / 50.0) * 50.0))
                 else:
                     zmin_global = 0.0
@@ -935,20 +1001,15 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                     domain_bounds['z_col']     = domain_z_col
                     domain_bounds['z_convert'] = convert_dom
 
-        # Note: auto-fit domain button sizing is handled by the global CSS in ui_layout.py
-
         b1, b2 = st.columns(2)
 
-        # ---> NEW: Inject marker to style these buttons
         b1.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
 
         with b1:
             if st.button("🔍 Auto-fit domain", use_container_width=True):
                 if is_sr:
-                    # SR auto-fit: compute max range from obs within current time bounds
                     if plotter is not None and sr_track_grp:
                         try:
-                            # Apply current time filter before computing range
                             temp_df = df_sel.copy()
                             time_col_sr = next(
                                 (c for c in temp_df.columns
@@ -978,7 +1039,6 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                             st.toast(f"⚠️ SR range error: {type(e).__name__}: {e}", icon="⚠️")
                 else:
                     if df_sel is None:
-                        # Track groups have df_sel=None but still have spatial data
                         _fit_df = data_pack['data'].get(sel_group)
                     else:
                         _fit_df = df_sel
@@ -1035,7 +1095,6 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                             lon_span  = max(a_lon_max - a_lon_min, 0.05)
                             buf_lat   = lat_span * 0.05
                             buf_lon   = lon_span * 0.05
-                            # Expand both sides to the longer span so domain is square
                             fit_lat_min = a_lat_min - buf_lat
                             fit_lat_max = a_lat_max + buf_lat
                             fit_lon_min = a_lon_min - buf_lon
@@ -1050,15 +1109,17 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                                 extra = (fit_lon_span - fit_lat_span) / 2
                                 fit_lat_min -= extra
                                 fit_lat_max += extra
+
                             if is_track_fit:
-                                # Track groups: don't clamp to obs domain bounds
                                 st.session_state._force_lat_range = (fit_lat_min, fit_lat_max)
                                 st.session_state._force_lon_range = (fit_lon_min, fit_lon_max)
+                                st.session_state._slider_lat_bounds = (fit_lat_min, fit_lat_max)
+                                st.session_state._slider_lon_bounds = (fit_lon_min, fit_lon_max)
                             else:
-                                s_lat_min = default_lat_min - 2.0
-                                s_lat_max = default_lat_max + 2.0
-                                s_lon_min = default_lon_min - 2.0
-                                s_lon_max = default_lon_max + 2.0
+                                s_lat_min = _gd_lat[0]
+                                s_lat_max = _gd_lat[1]
+                                s_lon_min = _gd_lon[0]
+                                s_lon_max = _gd_lon[1]
                                 st.session_state._force_lat_range = (
                                     max(s_lat_min, fit_lat_min),
                                     min(s_lat_max, fit_lat_max)
@@ -1067,6 +1128,9 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                                     max(s_lon_min, fit_lon_min),
                                     min(s_lon_max, fit_lon_max)
                                 )
+                                st.session_state._slider_lat_bounds = (fit_lat_min, fit_lat_max)
+                                st.session_state._slider_lon_bounds = (fit_lon_min, fit_lon_max)
+
                             if (st.session_state.get('v_is_3d') and
                                     domain_z_col and domain_z_col in temp_df.columns):
                                 z_vals_fit = temp_df[domain_z_col].dropna()
@@ -1090,18 +1154,22 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
 
         with b2:
             if st.button("🔄 Reset domain", use_container_width=True):
-                if is_sr:
-                    # SR reset: restore to the full slider range (not the auto-fit value)
-                    st.session_state._force_sr_max_range = sr_slider_max
-                    st.rerun()
-                else:
-                    st.session_state._force_lat_range = (default_lat_min - 2.0,
-                                                         default_lat_max + 2.0)
-                    st.session_state._force_lon_range = (default_lon_min - 2.0,
-                                                         default_lon_max + 2.0)
-                    st.session_state._force_domain_fit = True
-                    st.session_state._reset_z_range    = True
-                    st.rerun()
+                # Unconditionally wipe all domain bounds so it works reliably in either mode
+                st.session_state._force_lat_range = (_gd_lat[0], _gd_lat[1])
+                st.session_state._force_lon_range = (_gd_lon[0], _gd_lon[1])
+                st.session_state.pop('_slider_lat_bounds', None)
+                st.session_state.pop('_slider_lon_bounds', None)
+                st.session_state._force_domain_fit = True
+                st.session_state._reset_z_range    = True
+                
+                # Explicitly wipe the SR widget state from both session and persistence dictionaries
+                st.session_state.pop('_force_sr_max_range', None)
+                if 'v_sr_max_range' in st.session_state:
+                    del st.session_state['v_sr_max_range']
+                if 'viewer_state' in st.session_state and 'v_sr_max_range' in st.session_state.viewer_state:
+                    del st.session_state.viewer_state['v_sr_max_range']
+                    
+                st.rerun()
 
     return domain_bounds, convert_dom, vert_range, domain_z_col
 
@@ -1137,31 +1205,17 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
             st.warning("Time column exists, but all values are invalid or corrupted.")
             return None
 
-        from datetime import datetime, timezone
         data_min_dt    = dt_series.min().to_pydatetime()
         data_max_dt    = dt_series.max().to_pydatetime()
 
-        # Derive cycle center from storm_epoch metadata if available,
-        # otherwise fall back to midpoint of the data
-        cycle_dt = None
-        try:
-            epoch_raw = data_pack['meta'].get('info', {}).get('storm_epoch', '')
-            cycle_dt  = datetime.fromtimestamp(float(epoch_raw), tz=timezone.utc).replace(tzinfo=None)
-        except (ValueError, TypeError):
-            pass
-        if cycle_dt is None:
-            exact_center = data_min_dt + (data_max_dt - data_min_dt) / 2
-            cycle_dt     = (exact_center + timedelta(minutes=30)).replace(
-                               minute=0, second=0, microsecond=0)
+        mission_start = data_min_dt
+        mission_end   = data_max_dt
 
-        mission_start = cycle_dt - timedelta(hours=3)
-        mission_end   = cycle_dt + timedelta(hours=3)
-        # Slider spans actual data extent, but defaults to ±3h window
-        s_min_dt = min(data_min_dt, mission_start)
-        s_max_dt = max(data_max_dt, mission_end)
+        s_min_dt = data_min_dt
+        s_max_dt = data_max_dt
 
         is_track_grp = 'TRACK' in sel_group.upper()
-        default_range = (s_min_dt, s_max_dt) if is_track_grp else (mission_start, mission_end)
+        default_range = (s_min_dt, s_max_dt)
 
         # Reset time range when group type changes between track and non-track
         last_grp_was_track = st.session_state.get('_time_last_was_track', None)
@@ -1175,7 +1229,9 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
             forced_max = max(s_min_dt, min(forced_max, s_max_dt))
             if forced_min > forced_max:
                 forced_min = forced_max
-            st.session_state.v_time_range = (forced_min, forced_max)
+            # Delete widget key so slider reinitializes with new bounds
+            st.session_state.pop('v_time_range', None)
+            st.session_state._pending_time_range = (forced_min, forced_max)
         elif 'v_time_range' not in st.session_state:
             st.session_state.v_time_range = default_range
         else:
@@ -1187,15 +1243,20 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
             st.session_state.v_time_range = (t_c_min, t_c_max)
 
         sidebar_label('Time Range (UTC):', size='label')
+        _pending_time = st.session_state.pop('_pending_time_range', None)
+        _t_bounds = st.session_state.get('_slider_time_bounds')
+        _t_slider_min = _t_bounds[0] if _t_bounds else s_min_dt
+        _t_slider_max = _t_bounds[1] if _t_bounds else s_max_dt
+        if 'v_time_range' not in st.session_state:
+            st.session_state.v_time_range = _pending_time if _pending_time else default_range
         time_range = st.slider(
-            "Time Limits", min_value=s_min_dt, max_value=s_max_dt,
+            "Time Limits", min_value=_t_slider_min, max_value=_t_slider_max,
             key='v_time_range', format="HH:mm:ss",
             label_visibility="collapsed"
         )
 
         tb1, tb2 = st.columns(2)
 
-        # ---> NEW: Inject marker to style these buttons
         tb1.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
 
         with tb1:
@@ -1222,7 +1283,6 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
                 y_c = next((cl[c] for c in ['lat', 'latitude',  'clat'] if c in cl), None)
 
                 if is_sr_time and plotter is not None and sr_track_grp and x_c and y_c:
-                    # SR mode: filter by storm-relative range
                     sr_max = domain_bounds.get('_sr_max_range_km', 9999.0)
                     t_c = cl.get('time')
                     if t_c:
@@ -1255,8 +1315,9 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
                         fit_max = min(visible_dt.max().to_pydatetime(), s_max_dt)
                         if fit_min > fit_max:
                             fit_min = fit_max
-                        st.session_state._force_time_range = (fit_min, fit_max)
-                        st.session_state._force_time_fit = True
+                        st.session_state._force_time_range  = (fit_min, fit_max)
+                        st.session_state._force_time_fit    = True
+                        st.session_state._slider_time_bounds = (fit_min, fit_max)
                         st.rerun()
 
                 st.toast("⚠️ No data remaining in current Domain/Level to fit.",
@@ -1265,8 +1326,9 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
         with tb2:
             if st.button("🔄 Reset time", use_container_width=True,
                          key='btn_time_reset'):
-                st.session_state._force_time_range = (mission_start, mission_end)
+                st.session_state._force_time_range = (data_min_dt, data_max_dt)
                 st.session_state._force_time_fit   = True
+                st.session_state.pop('_slider_time_bounds', None)
                 st.rerun()
 
         time_bounds = {
@@ -1356,7 +1418,7 @@ def render_viewer_controls(plotter) -> ViewerIntent:
      target_col_3d, track_mapping, plot_track, selected_platform,
      track_proj, is_3d, plot_z_col, z_ratio, marker_sz, vec_scale,
      can_do_3d) = _render_plotting_options(
-         data_pack, sel_group, h_col, p_col, df_sel, cols_lower, plot_var
+         data_pack, sel_group, h_col, p_col, df_sel, cols_lower, plot_var, plot_type
      )
 
     # Pass the actively managed basemap state to the intent

@@ -148,7 +148,7 @@ def render_viewer_tab():
         )
 
     if fig is not None:
-        # Flight track overlay only applies in the standard (non-SR) view
+        # Flight track overlay — Cartesian and SR modes handled separately
         if intent.plot_type == "Horizontal Cartesian":
             is_target_pres = intent.plot_z_col and any(
                 p in intent.plot_z_col.lower() for p in ['pres', 'pressure', 'p']
@@ -160,6 +160,39 @@ def render_viewer_tab():
                 is_target_pres, intent.track_proj,
                 intent.domain_bounds
             )
+        elif intent.plot_type == "Horizontal Storm-Relative" and intent.plot_track:
+            import plotly.graph_objects as go
+            for plat, track_group in intent.track_mapping.items():
+                if plat != intent.selected_platform:
+                    continue
+                track_df = data_pack['data'].get(track_group)
+                if track_df is None or track_df.empty:
+                    continue
+                tcl = {c.lower(): c for c in track_df.columns}
+                t_lon_c = next((tcl[c] for c in ['lon', 'longitude'] if c in tcl), None)
+                t_lat_c = next((tcl[c] for c in ['lat', 'latitude']  if c in tcl), None)
+                t_time_c = tcl.get('time')
+                if not (t_lon_c and t_lat_c and t_time_c):
+                    continue
+                tdf = track_df[[t_lon_c, t_lat_c, t_time_c]].dropna()
+                if tdf.empty:
+                    continue
+                try:
+                    result = plotter._to_storm_relative(
+                        tdf[t_lon_c].values, tdf[t_lat_c].values,
+                        tdf[t_time_c].values,
+                        intent.sr_track_grp, intent.sr_up_convention
+                    )
+                    if result is not None:
+                        x_km, y_km, _, _, _ = result
+                        fig.add_trace(go.Scatter(
+                            x=x_km, y=y_km, mode='lines',
+                            line=dict(color='black', width=1),
+                            name=f'{plat} Flight Track',
+                            showlegend=False, hoverinfo='skip'
+                        ))
+                except Exception:
+                    pass
         col_left, col_center, col_right = st.columns([1, 8, 1])
         with col_center:
             st.plotly_chart(fig, use_container_width=False)

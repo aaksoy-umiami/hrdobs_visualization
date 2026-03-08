@@ -4,98 +4,169 @@ basemap.py
 ----------
 Black-line basemap helper for StormPlotter.
 
-One public function:
+Draws coastlines, country borders as regular go.Scatter line traces so they
+work with any Plotly version (including 6.x where Scattergeo is broken in
+some Streamlit environments).
+
+Public functions:
+
+    get_basemap_traces(domain_bounds)
+        Returns a list of go.Scatter traces for geographic features.
+        Add these BEFORE data traces so they appear underneath.
 
     get_geo_layout(domain_bounds)
-        Returns a Plotly layout.geo dict that draws coastlines, country
-        borders, state/province borders, and lake outlines as thin black
-        lines on a transparent background.  No fill colours.  No network
-        calls — all data is Natural Earth 50m, bundled with Plotly.
-
-Limitation
-----------
-Plotly does not support a geo underlay beneath a 3-D scene.  The basemap
-is therefore silently skipped for 3-D plots — the checkbox has no visible
-effect in that mode.  plotter.py handles this by only calling get_geo_layout
-when is_3d is False.
+        Legacy — kept for compatibility but no longer used for rendering.
 """
 import math
+import os
+import json
 from ui_layout import TARGET_PLOT_TICKS
 
-def get_geo_layout(domain_bounds: dict) -> dict:
+
+def _decode_arc(arc, scale, translate):
+    """Decode a delta-encoded topojson arc to lon/lat lists."""
+    lons, lats = [], []
+    x, y = 0, 0
+    for pt in arc:
+        x += pt[0]
+        y += pt[1]
+        lons.append(x * scale[0] + translate[0])
+        lats.append(y * scale[1] + translate[1])
+    return lons, lats
+
+
+def _find_topo_path():
+    """Locate Natural Earth topojson file — project-bundled copy takes priority."""
+    import os
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Prefer higher-resolution 50m if available, fall back to 110m
+    for fname in ('world_50m.json', 'world_110m.json'):
+        project_copy = os.path.join(script_dir, fname)
+        if os.path.exists(project_copy):
+            return project_copy
+
+    # Fallback: Plotly bundled copy (available in Plotly < 6)
+    try:
+        import plotly
+        base = os.path.dirname(plotly.__file__)
+        candidates = [
+            os.path.join(base, 'package_data', 'topojson', 'world_50m.json'),
+            os.path.join(base, 'package_data', 'topojson', 'world_110m.json'),
+            os.path.join(base, 'data', 'world_110m.json'),
+        ]
+        for p in candidates:
+            if os.path.exists(p):
+                return p
+    except Exception:
+        pass
+    return None
+
+
+def get_basemap_traces(domain_bounds: dict) -> list:
     """
-    Return a Plotly layout.geo dict for a black-line basemap.
-
-    Draws coastlines, country borders, state/province borders, and lake
-    outlines as thin black lines.  Land, ocean, and lake interiors are
-    transparent so the figure background colour shows through unchanged.
-
-    Resolution is 50m (Natural Earth 1:50,000,000).  This is adequate for
-    synoptic and mesoscale domains (roughly 3° and larger).  At inner-core
-    scales (~1° or less) the lines will appear coarser than the data.
+    Return a list of go.Scatter line traces for coastlines and borders.
+    Compatible with Plotly 6.x — uses standard Cartesian axes (x=lon, y=lat).
 
     Parameters
     ----------
-    domain_bounds : dict
-        Must contain keys: lat_min, lat_max, lon_min, lon_max (floats).
+    domain_bounds : dict  — lat_min, lat_max, lon_min, lon_max
+    """
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        return []
+
+    topo_path = _find_topo_path()
+    if topo_path is None:
+        return []
+
+    try:
+        with open(topo_path) as f:
+            topo = json.load(f)
+    except Exception:
+        return []
+
+    arcs = topo.get('arcs', [])
+    transform = topo.get('transform', {})
+    scale = transform.get('scale', [1.0, 1.0])
+    translate = transform.get('translate', [0.0, 0.0])
+
+    # Expand domain slightly so border lines that cross the edge are included
+    pad = 1.0
+    lo_min = domain_bounds['lon_min'] - pad
+    lo_max = domain_bounds['lon_max'] + pad
+    la_min = domain_bounds['lat_min'] - pad
+    la_max = domain_bounds['lat_max'] + pad
+
+    all_lons = []
+    all_lats = []
+
+    for arc in arcs:
+        lons, lats = _decode_arc(arc, scale, translate)
+
+        # Check if any point of this arc falls in the domain
+        in_domain = any(
+            lo_min <= lo <= lo_max and la_min <= la <= la_max
+            for lo, la in zip(lons, lats)
+        )
+        if not in_domain:
+            continue
+
+        # Add arc points, using None as a break between arcs
+        all_lons.extend(lons + [None])
+        all_lats.extend(lats + [None])
+
+    if not all_lons:
+        return []
+
+    return [go.Scatter(
+        x=all_lons,
+        y=all_lats,
+        mode='lines',
+        line=dict(color='black', width=0.8),
+        hoverinfo='skip',
+        showlegend=False,
+        name='_basemap',
+    )]
+
+
+def get_geo_layout(domain_bounds: dict) -> dict:
+    """
+    Legacy function — kept for compatibility but no longer used for rendering
+    in Plotly 6+.  get_basemap_traces() is used instead.
     """
     lat_pad = max((domain_bounds['lat_max'] - domain_bounds['lat_min']) * 0.02, 0.1)
     lon_pad = max((domain_bounds['lon_max'] - domain_bounds['lon_min']) * 0.02, 0.1)
-
-    # 1. Find the maximum span of the current view
     max_span = max(domain_bounds['lat_max'] - domain_bounds['lat_min'],
                    domain_bounds['lon_max'] - domain_bounds['lon_min'])
-    
-    # 2. Divide by the user's global rule to find the raw tick interval
     raw_dtick = max_span / max(1, TARGET_PLOT_TICKS)
-    
-    # 3. "Nice Number" Algorithm: snap the raw interval to a clean human-readable number
     if raw_dtick <= 0:
         dynamic_dtick = 1.0
     else:
         magnitude = 10 ** math.floor(math.log10(raw_dtick))
         norm = raw_dtick / magnitude
-        if norm < 1.5: 
-            nice_norm = 1.0
-        elif norm < 3.5: 
-            nice_norm = 2.0
-        elif norm < 7.5: 
-            nice_norm = 5.0
-        else: 
-            nice_norm = 10.0
+        if norm < 1.5:   nice_norm = 1.0
+        elif norm < 3.5: nice_norm = 2.0
+        elif norm < 7.5: nice_norm = 5.0
+        else:            nice_norm = 10.0
         dynamic_dtick = nice_norm * magnitude
 
     return dict(
         resolution=50,
-        showcoastlines=True,
-        coastlinecolor="black",
-        coastlinewidth=1.0,
-        showland=False,
-        showocean=False,
-        showlakes=True,
-        lakecolor="rgba(0,0,0,0)",   
-        showrivers=False,
-        showcountries=True,
-        countrycolor="black",
-        countrywidth=0.5,
-        showsubunits=True,           
-        subunitcolor="black",
-        subunitwidth=0.35,
-        bgcolor="rgba(0,0,0,0)",     
-
-        lonaxis=dict(
-            range=[domain_bounds['lon_min'] - lon_pad,
-                   domain_bounds['lon_max'] + lon_pad],
-            showgrid=True,
-            gridcolor="rgba(180,180,180,0.4)",
-            dtick=dynamic_dtick, # Extracted from the global rule
-        ),
-        lataxis=dict(
-            range=[domain_bounds['lat_min'] - lat_pad,
-                   domain_bounds['lat_max'] + lat_pad],
-            showgrid=True,
-            gridcolor="rgba(180,180,180,0.4)",
-            dtick=dynamic_dtick, # Extracted from the global rule
-        ),
+        showcoastlines=True, coastlinecolor="black", coastlinewidth=1.0,
+        showland=False, showocean=False,
+        showlakes=True, lakecolor="rgba(0,0,0,0)",
+        showcountries=True, countrycolor="black", countrywidth=0.5,
+        showsubunits=True, subunitcolor="black", subunitwidth=0.35,
+        bgcolor="rgba(0,0,0,0)",
+        lonaxis=dict(range=[domain_bounds['lon_min'] - lon_pad,
+                            domain_bounds['lon_max'] + lon_pad],
+                     showgrid=True, gridcolor="rgba(180,180,180,0.4)",
+                     dtick=dynamic_dtick),
+        lataxis=dict(range=[domain_bounds['lat_min'] - lat_pad,
+                            domain_bounds['lat_max'] + lat_pad],
+                     showgrid=True, gridcolor="rgba(180,180,180,0.4)",
+                     dtick=dynamic_dtick),
         projection_type="mercator",
+        domain=dict(x=[0.0, 1.0], y=[0.0, 1.0]),
     )
