@@ -85,6 +85,9 @@ CLR_PLOT_GRID = "#e0e0e0" # light gray
 # Number of ticks/grid lines to plot on 2d/3d plots
 TARGET_PLOT_TICKS = 15
 
+# Title y position (fraction of container height, from top)
+PLOT_TITLE_Y = 0.96
+
 
 # ---------------------------------------------------------------------------
 # Page setup and global stylesheet

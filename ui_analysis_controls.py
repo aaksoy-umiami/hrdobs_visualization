@@ -12,6 +12,7 @@ from typing import Optional, Dict
 from ui_viewer_controls import render_file_upload_section
 from config import DEFAULT_HIST_BINS
 from ui_components import sidebar_label, section_divider
+from plotter import StormPlotter
 
 @dataclass
 class AnalysisIntent:
@@ -24,12 +25,12 @@ class AnalysisIntent:
     hist_bins_y: Optional[int] = None
     normalization: str = "None"  # <--- Added
     reverse_axes: bool = False
+    render_as_line: bool = False
 
-# Updated state keys for normalization
 _ANALYSIS_STATE_KEYS = [
     'a_sel_group', 'a_variable', 'a_coord_var', 'a_analysis_type', 
     'a_bin_mode_x', 'a_bin_manual_x', 'a_bin_mode_y', 'a_bin_manual_y', 
-    'a_hist_norm', 'a_reverse_axes', 'a_scatter_trendline', 'a_scatter_color'
+    'a_hist_norm', 'a_reverse_axes', 'a_render_as_line', 'a_scatter_trendline', 'a_scatter_color'
 ]
 
 def _render_analysis_variable_section(data_pack, plotter, analysis_type):
@@ -54,24 +55,16 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
             st.info("Statistical analysis not available for flight tracks.")
         else:
             is_scatter = (analysis_type == "Scatter Analysis")
-            is_2d = (analysis_type == "Histogram Analysis (2D)")
-            label_1 = "First Variable"
-            label_2 = "Second Variable"
-
+            label_1 = "First Variable (Y-axis)" if is_scatter else "Variable"
+            label_2 = "Second Variable (X-axis)" if is_scatter else "Coordinate Variable"
+            
             if is_scatter:
                 base_vars = plotter.get_plottable_variables(sel_group)
                 coord_vars = plotter.get_coordinate_variables(sel_group)
-                # Preserve tiered order from get_plottable_variables; append any
-                # coord-only entries that aren't already in the list
-                seen = set(base_vars)
-                extra = [c for c in coord_vars if c not in seen]
-                list_1 = base_vars + extra
-                list_2 = list_1
-            elif is_2d:
-                list_1 = plotter.get_plottable_variables(sel_group, exclude_vectors=True)
-                list_2 = list_1
+                list_1 = sorted(list(set(base_vars + coord_vars)))
+                list_2 = list_1 
             else:
-                list_1 = plotter.get_plottable_variables(sel_group, exclude_vectors=True)
+                list_1 = plotter.get_plottable_variables(sel_group)
                 list_2 = plotter.get_coordinate_variables(sel_group)
 
             if list_1:
@@ -90,10 +83,7 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
             if list_2:
                 if ('a_coord_var' not in st.session_state or
                         st.session_state.a_coord_var not in list_2):
-                    if (is_scatter or is_2d) and len(list_2) > 1:
-                        st.session_state.a_coord_var = list_2[1]
-                    else:
-                        st.session_state.a_coord_var = list_2[0]
+                    st.session_state.a_coord_var = list_2[0]
 
                 coord_var = st.selectbox(
                     label_2, list_2,
@@ -107,7 +97,7 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
     return sel_group, variable, coord_var
 
 
-def render_analysis_controls(plotter) -> AnalysisIntent:
+def render_analysis_controls() -> AnalysisIntent:
     intent = AnalysisIntent()
     
     if 'analysis_state' not in st.session_state:
@@ -121,8 +111,14 @@ def render_analysis_controls(plotter) -> AnalysisIntent:
     )
 
     intent.data_pack = data_pack
-    if data_pack is None or plotter is None:
+    if data_pack is None:
         return intent
+
+    # Build plotter here so it's always consistent with the resolved data_pack
+    plotter = StormPlotter(
+        data_pack['data'], data_pack['track'],
+        data_pack['meta'], data_pack['var_attrs']
+    )
 
     with st.sidebar.container(border=True):
         st.markdown("### ⚙️ Analysis Type")
@@ -182,14 +178,14 @@ def render_analysis_controls(plotter) -> AnalysisIntent:
                 intent.hist_bins_y = st.number_input("Bins Y", min_value=1, max_value=1000, step=1, key='a_bin_manual_y', label_visibility="collapsed", disabled=not is_2d)
 
         # ---> NEW: Normalization Control
-        c7, c8 = st.columns([0.9, 2.3])
+        c7, c8 = st.columns([1.4, 1.8])
         with c7:
             sidebar_label("Normalization:", size='label', enabled=is_hist)
         with c8:
             if 'a_hist_norm' not in st.session_state:
                 st.session_state.a_hist_norm = "None"
                 
-            norm_opts = ["None", "Row Normalization (fix Y, sum X to 100%)", "Column Normalization (fix X, sum Y to 100%)", "Full Normalization (all bins sum to 100%)"] if is_2d else ["None", "Full Normalization (all bins sum to 100%)"]
+            norm_opts = ["None", "Normalize Along X Axis", "Normalize Along Y Axis", "Normalize Fully"] if is_2d else ["None", "Normalize Fully"]
             
             if st.session_state.a_hist_norm not in norm_opts:
                 st.session_state.a_hist_norm = "None"
@@ -200,18 +196,17 @@ def render_analysis_controls(plotter) -> AnalysisIntent:
             )
             intent.normalization = norm_val if is_hist else "None"
         # <---
-
-        # -------------------------------------------------------------
-        # COMMON CONTROLS
-        # -------------------------------------------------------------
-        section_divider()
-        st.markdown("#### Common Controls")
-
+                
         if 'a_reverse_axes' not in st.session_state: st.session_state.a_reverse_axes = False
-        if not is_2d and not is_scatter and st.session_state.a_reverse_axes: st.session_state.a_reverse_axes = False
-        st.checkbox("Reverse X and Y axes", key="a_reverse_axes", disabled=not (is_2d or is_scatter))
-        intent.reverse_axes = st.session_state.a_reverse_axes if (is_2d or is_scatter) else False
+        st.checkbox("Reverse X and Y axes", key="a_reverse_axes")
+        intent.reverse_axes = st.session_state.a_reverse_axes
 
+        is_1d = (intent.analysis_type == "Histogram Analysis (1D)")
+        if 'a_render_as_line' not in st.session_state: st.session_state.a_render_as_line = False
+        if not is_1d and st.session_state.a_render_as_line: st.session_state.a_render_as_line = False
+        st.checkbox("Render as line plot", key="a_render_as_line", disabled=not is_1d)
+        intent.render_as_line = st.session_state.a_render_as_line if is_1d else False
+                
         # -------------------------------------------------------------
         # SCATTER CONTROLS
         # -------------------------------------------------------------

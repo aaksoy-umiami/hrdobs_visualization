@@ -118,32 +118,48 @@ def render_viewer_tab():
     # ------------------------------------------------------------------
     active_thinning = intent.thin_pct if intent.apply_thinning else None
 
-    fig, plot_df = plotter.plot(
-        sel_group, plot_var,
-        intent.z_con, intent.domain_bounds, intent.show_cen,
-        is_3d=intent.is_3d,
-        z_col=intent.plot_z_col if (intent.is_3d and intent.plot_z_col) else None,
-        thinning_pct=active_thinning,
-        marker_size_pct=intent.marker_sz,
-        time_bounds=intent.time_bounds,
-        z_ratio=intent.z_ratio,
-        vec_scale=intent.vec_scale,
-        show_basemap=intent.show_basemap,
-        cen_mode=intent.cen_mode,
-        color_scale=intent.color_scale,
-    )
+    if intent.plot_type == "Horizontal Storm-Relative" and intent.sr_track_grp:
+        fig, plot_df = plotter.plot_storm_relative(
+            sel_group, plot_var,
+            intent.z_con, intent.domain_bounds,
+            sr_track_grp=intent.sr_track_grp,
+            up_convention=intent.sr_up_convention,
+            thinning_pct=active_thinning,
+            marker_size_pct=intent.marker_sz,
+            time_bounds=intent.time_bounds,
+            color_scale=intent.color_scale,
+            show_center=intent.show_cen,
+            cen_mode=intent.cen_mode,
+        )
+    else:
+        fig, plot_df = plotter.plot(
+            sel_group, plot_var,
+            intent.z_con, intent.domain_bounds, intent.show_cen,
+            is_3d=intent.is_3d,
+            z_col=intent.plot_z_col if (intent.is_3d and intent.plot_z_col) else None,
+            thinning_pct=active_thinning,
+            marker_size_pct=intent.marker_sz,
+            time_bounds=intent.time_bounds,
+            z_ratio=intent.z_ratio,
+            vec_scale=intent.vec_scale,
+            show_basemap=intent.show_basemap,
+            cen_mode=intent.cen_mode,
+            color_scale=intent.color_scale,
+        )
 
-    if fig:
-        is_target_pres = intent.plot_z_col and any(
-            p in intent.plot_z_col.lower() for p in ['pres', 'pressure', 'p']
-        )
-        fig = add_flight_tracks(
-            fig, data_pack,
-            intent.track_mapping, intent.plot_track,
-            intent.selected_platform, intent.is_3d,
-            is_target_pres, intent.track_proj,
-            intent.domain_bounds
-        )
+    if fig is not None:
+        # Flight track overlay only applies in the standard (non-SR) view
+        if intent.plot_type == "Horizontal Cartesian":
+            is_target_pres = intent.plot_z_col and any(
+                p in intent.plot_z_col.lower() for p in ['pres', 'pressure', 'p']
+            )
+            fig = add_flight_tracks(
+                fig, data_pack,
+                intent.track_mapping, intent.plot_track,
+                intent.selected_platform, intent.is_3d,
+                is_target_pres, intent.track_proj,
+                intent.domain_bounds
+            )
         col_left, col_center, col_right = st.columns([1, 8, 1])
         with col_center:
             st.plotly_chart(fig, use_container_width=False)

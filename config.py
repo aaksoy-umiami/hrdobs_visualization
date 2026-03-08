@@ -19,11 +19,15 @@ EXPECTED_META = [
 
 GLOBAL_VAR_CONFIG = {
     # --- NON-PLOTTABLE COORDINATES & METADATA (Hidden) ---
-    'lat': {'hide': True, 'is_coord': True}, 'lon': {'hide': True, 'is_coord': True}, 'time': {'hide': True, 'is_coord': True},
-    'clat': {'hide': True, 'is_coord': True}, 'clon': {'hide': True, 'is_coord': True}, 
+    'lat': {'hide': True, 'is_coord': True}, 'lon': {'hide': True, 'is_coord': True}, 'time': {'hide': False, 'is_coord': True},
+    'clat': {'hide': True, 'is_coord': True, 'is_track_pos': True},
+    'clon': {'hide': True, 'is_coord': True, 'is_track_pos': True},
     'az': {'hide': True, 'is_coord': True}, 'rmw': {'hide': True, 'is_coord': True},
-    'pmin': {'hide': True}, 'vmax': {'hide': True}, 
     'qerr': {'hide': True}, 'spderr': {'hide': True},
+
+    # --- TRACK INTENSITY VARIABLES ---
+    'pmin': {'colorscale': 'Viridis_r', 'hide': False, 'display_name': 'Min Pressure (hPa)'},
+    'vmax': {'colorscale': 'Turbo',     'hide': False, 'cmin': 0, 'display_name': 'Max Wind (m/s)'},
 
     # --- DIVERGING VARIABLES (Centered at 0) ---
     'rvel': {'colorscale': 'RdBu_r', 'cmid': 0, 'hide': False}, 
