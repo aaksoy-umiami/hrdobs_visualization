@@ -73,7 +73,7 @@ def _render_stats_table(vals, units, log_applied):
     })
     _, col_center, _ = st.columns([1, 8, 1])
     with col_center:
-        st.dataframe(df_stats, use_container_width=True, hide_index=True)
+        st.dataframe(df_stats, width="stretch", hide_index=True)
 
 
 def render_analysis_tab():
@@ -122,7 +122,7 @@ def render_analysis_tab():
             if fig:
                 _, col_center, _ = st.columns([1, 8, 1])
                 with col_center:
-                    st.plotly_chart(fig, use_container_width=False)
+                    st.plotly_chart(fig, width="content")
                 df_grp = data_pack['data'].get(intent.sel_group)
                 if df_grp is not None and plot_var in df_grp.columns:
                     vals = df_grp[plot_var].dropna().values
@@ -145,7 +145,7 @@ def render_analysis_tab():
                 if fig:
                     _, col_center, _ = st.columns([1, 8, 1])
                     with col_center:
-                        st.plotly_chart(fig, use_container_width=False)
+                        st.plotly_chart(fig, width="content")
                 else:
                     st.warning("Could not generate 2D histogram for these variables.")
             else:
@@ -163,7 +163,7 @@ def render_analysis_tab():
                 if fig:
                     _, col_center, _ = st.columns([1, 8, 1])
                     with col_center:
-                        st.plotly_chart(fig, use_container_width=False)
+                        st.plotly_chart(fig, width="content")
                 else:
                     st.warning("Could not generate scatter plot for these variables.")
             else:

@@ -251,7 +251,7 @@ def render_explorer_controls(db_df, has_vars,
         multiselect_with_controls('Contains variable:', avail_vars, 'ui_vars')
 
     st.sidebar.button("🔄 Reset All Filters", type="secondary",
-                      use_container_width=True, on_click=reset_all_filters)
+                      width="stretch", on_click=reset_all_filters)
 
     # ------------------------------------------------------------------
     # Persist state and return intent

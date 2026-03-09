@@ -268,4 +268,4 @@ def render_viewer_tab():
                     pass
         col_left, col_center, col_right = st.columns([1, 8, 1])
         with col_center:
-            st.plotly_chart(fig, use_container_width=False)
+            st.plotly_chart(fig, width="content")

@@ -216,7 +216,7 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
         b1.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
 
         with b1:
-            if st.button("🔍 Auto-fit domain", use_container_width=True):
+            if st.button("🔍 Auto-fit domain", width="stretch"):
                 if is_sr:
                     if plotter is not None and sr_track_grp:
                         try:
@@ -363,7 +363,7 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                             st.rerun()
 
         with b2:
-            if st.button("🔄 Reset domain", use_container_width=True):
+            if st.button("🔄 Reset domain", width="stretch"):
                 # Unconditionally wipe all domain bounds so it works reliably in either mode
                 st.session_state._force_lat_range = (_gd_lat[0], _gd_lat[1])
                 st.session_state._force_lon_range = (_gd_lon[0], _gd_lon[1])
@@ -470,7 +470,7 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
         tb1.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
 
         with tb1:
-            if st.button("⏱️ Auto-fit time", use_container_width=True,
+            if st.button("⏱️ Auto-fit time", width="stretch",
                          key='btn_time_fit'):
                 temp_df = df_sel.copy()
                 if (st.session_state.get('v_use_filter') and
@@ -534,7 +534,7 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
                          icon="⚠️")
 
         with tb2:
-            if st.button("🔄 Reset time", use_container_width=True,
+            if st.button("🔄 Reset time", width="stretch",
                          key='btn_time_reset'):
                 st.session_state._force_time_range = (data_min_dt, data_max_dt)
                 st.session_state._force_time_fit   = True
