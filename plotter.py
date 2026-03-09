@@ -308,21 +308,7 @@ class StormPlotter:
         df = df.dropna(subset=cols_to_check)
         if df.empty: return None, None
 
-        # Compute colorscale range from the FULL group (pre-domain-filter) so
-        # that switching between Cartesian and SR views gives identical colorscales.
-        _full_color_vals = df[variable].values if variable in df.columns else None
-        if _full_color_vals is not None and variable.lower() == 'time':
-            _tr = self._convert_time_to_relative(_full_color_vals)
-            _full_color_vals = _tr[0] if _tr is not None else _full_color_vals
         _var_conf_pre = GLOBAL_VAR_CONFIG.get(variable.lower(), {})
-        _full_cmin = float(_var_conf_pre['cmin']) if _var_conf_pre.get('cmin') is not None else (
-            float(np.nanmin(_full_color_vals)) if _full_color_vals is not None else None)
-        _full_cmax = float(_var_conf_pre['cmax']) if _var_conf_pre.get('cmax') is not None else (
-            float(np.nanmax(_full_color_vals)) if _full_color_vals is not None else None)
-        if variable.lower() == 'time' and _full_cmin is not None:
-            _full_cmin = max(_full_cmin, -10800.0)
-            _full_cmax = min(_full_cmax,  10800.0)
-        
         if thinning_pct is not None and thinning_pct < 100:
             df = df.sample(frac=thinning_pct/100.0, random_state=42)
         if df.empty: return None, None
@@ -370,6 +356,20 @@ class StormPlotter:
             if plot_df.empty:
                 st.warning("No data found within the selected time window.")
                 return None, None
+
+        # Compute colorscale range from the filtered plot_df so the colorbar
+        # always auto-scales to whatever domain/time/level is currently visible.
+        _filtered_color_vals = plot_df[variable].values if variable in plot_df.columns else None
+        if _filtered_color_vals is not None and variable.lower() == 'time':
+            _tr = self._convert_time_to_relative(_filtered_color_vals)
+            _filtered_color_vals = _tr[0] if _tr is not None else _filtered_color_vals
+        _full_cmin = float(_var_conf_pre['cmin']) if _var_conf_pre.get('cmin') is not None else (
+            float(np.nanmin(_filtered_color_vals)) if _filtered_color_vals is not None else None)
+        _full_cmax = float(_var_conf_pre['cmax']) if _var_conf_pre.get('cmax') is not None else (
+            float(np.nanmax(_filtered_color_vals)) if _filtered_color_vals is not None else None)
+        if variable.lower() == 'time' and _full_cmin is not None:
+            _full_cmin = max(_full_cmin, -10800.0)
+            _full_cmax = min(_full_cmax,  10800.0)
 
         fig = go.Figure()
 
@@ -479,7 +479,7 @@ class StormPlotter:
                     colorscale=cmap, cmin=cmin, cmax=cmax,
                     sizemode="raw", sizeref=cone_sizeref, anchor="tail",
                     name=display_name, showscale=True,
-                    colorbar=dict(title=cb_title, len=0.8, thickness=15, title_font=dict(size=FS_PLOT_TICK), tickfont=dict(size=FS_PLOT_TICK))
+                    colorbar=dict(len=0.8, thickness=15, tickfont=dict(size=FS_PLOT_TICK))
                 ))
             else:
                 # 2D Rotated Arrows
@@ -488,20 +488,14 @@ class StormPlotter:
                     symbol='arrow-up', angle=angles, angleref='up',
                     size=12 * sz_mult * vec_scale, color=color_array,
                     colorscale=cmap, cmin=cmin, cmax=cmax, cmid=cmid,
-                    showscale=True, colorbar=dict(title=cb_title, len=0.8, thickness=15, title_font=dict(size=FS_PLOT_TICK), tickfont=dict(size=FS_PLOT_TICK), tickvals=cb_tickvals, ticktext=cb_ticktext)
+                    showscale=True, colorbar=dict(len=0.8, thickness=15, tickfont=dict(size=FS_PLOT_TICK), tickvals=cb_tickvals, ticktext=cb_ticktext)
                 )
                 text_arr = [f"Magnitude: {m:.1f}" if not pd.isna(m) else "NaN" for m in base_color_array]
                 
-                if show_basemap:
-                    fig.add_trace(go.Scattergeo(
-                        lon=lons, lat=lats, mode='markers', marker=marker_dict,
-                        name=display_name, text=text_arr, hoverinfo='text+lon+lat', showlegend=False
-                    ))
-                else:
-                    fig.add_trace(go.Scatter(
-                        x=lons, y=lats, mode='markers', marker=marker_dict,
-                        name=display_name, text=text_arr, hoverinfo='text+x+y', showlegend=False
-                    ))
+                fig.add_trace(go.Scatter(
+                    x=lons, y=lats, mode='markers', marker=marker_dict,
+                    name=display_name, text=text_arr, hoverinfo='text+x+y', showlegend=False
+                ))
 
         elif is_3d and z_vals is not None:
             fig.add_trace(go.Scatter3d(
@@ -522,16 +516,10 @@ class StormPlotter:
             )
             text_arr = [f"{v:,.2f}" if not pd.isna(v) else "NaN" for v in base_color_array]
             
-            if show_basemap:
-                fig.add_trace(go.Scattergeo(
-                    lon=lons, lat=lats, mode='markers', marker=marker_dict,
-                    text=text_arr, name=group_name, showlegend=False
-                ))
-            else:
-                fig.add_trace(go.Scatter(
-                    x=lons, y=lats, mode='markers', marker=marker_dict,
-                    text=text_arr, name=group_name, showlegend=False
-                ))
+            fig.add_trace(go.Scatter(
+                x=lons, y=lats, mode='markers', marker=marker_dict,
+                text=text_arr, name=group_name, showlegend=False
+            ))
 
         # --- STORM CENTER & MOTION VECTOR PLOTTING ---
         if show_center and self.metadata.get('storm_center'):
@@ -587,28 +575,16 @@ class StormPlotter:
                         name='Storm Motion', showlegend=False, hoverinfo='skip'
                     ))
                 else:
-                    if show_basemap:
-                        fig.add_trace(go.Scattergeo(
-                            lon=[clon], lat=[clat], mode='markers',
-                            marker=dict(symbol='circle', size=10, color='black'),
-                            name='Center Location', showlegend=False, hoverinfo='skip'
-                        ))
-                        fig.add_trace(go.Scattergeo(
-                            lon=a_lon, lat=a_lat, mode='lines',
-                            line=dict(color='black', width=2.5),
-                            name='Storm Motion', showlegend=False, hoverinfo='skip'
-                        ))
-                    else:
-                        fig.add_trace(go.Scatter(
-                            x=[clon], y=[clat], mode='markers',
-                            marker=dict(symbol='circle', size=10, color='black'),
-                            name='Center Location', showlegend=False, hoverinfo='skip'
-                        ))
-                        fig.add_trace(go.Scatter(
-                            x=a_lon, y=a_lat, mode='lines',
-                            line=dict(color='black', width=2.5),
-                            name='Storm Motion', showlegend=False, hoverinfo='skip'
-                        ))
+                    fig.add_trace(go.Scatter(
+                        x=[clon], y=[clat], mode='markers',
+                        marker=dict(symbol='circle', size=10, color='black'),
+                        name='Center Location', showlegend=False, hoverinfo='skip'
+                    ))
+                    fig.add_trace(go.Scatter(
+                        x=a_lon, y=a_lat, mode='lines',
+                        line=dict(color='black', width=2.5),
+                        name='Storm Motion', showlegend=False, hoverinfo='skip'
+                    ))
             else:
                 # Default X marker (Much thinner line width: 1.5 instead of 2.5)
                 if use_3d:
@@ -620,18 +596,11 @@ class StormPlotter:
                         name='Center', showlegend=False, hoverinfo='skip'
                     ))
                 else:
-                    if show_basemap:
-                        fig.add_trace(go.Scattergeo(
-                            lon=[clon], lat=[clat], mode='markers',
-                            marker=dict(symbol='x', size=12, color='black', line=dict(color='black', width=1.5)),
-                            name='Center', showlegend=False, hoverinfo='skip'
-                        ))
-                    else:
-                        fig.add_trace(go.Scatter(
-                            x=[clon], y=[clat], mode='markers',
-                            marker=dict(symbol='x', size=12, color='black', line=dict(color='black', width=1.5)),
-                            name='Center', showlegend=False, hoverinfo='skip'
-                        ))
+                    fig.add_trace(go.Scatter(
+                        x=[clon], y=[clat], mode='markers',
+                        marker=dict(symbol='x', size=12, color='black', line=dict(color='black', width=1.5)),
+                        name='Center', showlegend=False, hoverinfo='skip'
+                    ))
 
         nice_title = self._format_title(group_name, variable, constraint_lbl)
         
@@ -682,44 +651,37 @@ class StormPlotter:
             _FIG_H = _PA_H + _MT + _MB
 
             if show_basemap and domain_bounds:
-                from basemap import get_geo_layout
-                geo_layout = get_geo_layout(domain_bounds)
-                fig.update_layout(
-                    title={'text': nice_title, 'x': 0.5, 'xanchor': 'center', 'y': PLOT_TITLE_Y, 'yanchor': 'top', 'yref': 'container'},
-                    width=_FIG_W, height=_FIG_H,
-                    showlegend=False,
-                    geo=geo_layout,
-                    margin=dict(autoexpand=False, l=_ML, r=_MR, t=_MT, b=_MB),
-                )
-            else:
-                fig.update_layout(
-                    title={'text': nice_title, 'x': 0.5, 'xanchor': 'center', 'y': PLOT_TITLE_Y, 'yanchor': 'top', 'yref': 'container'},
-                    width=_FIG_W, height=_FIG_H,
-                    autosize=False,
-                    showlegend=False,
-                    xaxis=dict(
-                        title='Longitude',
-                        title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
-                        tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
-                        range=x_range,
-                        showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
-                        showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
-                        constrain='domain',
-                    ),
-                    yaxis=dict(
-                        title='Latitude',
-                        title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
-                        tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
-                        range=y_range,
-                        showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
-                        showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
-                        scaleanchor='x', scaleratio=1,
-                        constrain='domain',
-                    ),
-                    plot_bgcolor=CLR_PLOT_BG,
-                    paper_bgcolor=CLR_PLOT_BG,
-                    margin=dict(autoexpand=False, l=_ML, r=_MR, t=_MT, b=_MB),
-                )
+                from basemap import get_basemap_traces
+                for bm_trace in get_basemap_traces(domain_bounds):
+                    fig.add_trace(bm_trace)
+                    fig.data = (fig.data[-1],) + fig.data[:-1]  # move basemap trace to front
+
+            fig.update_layout(
+                title={'text': nice_title, 'x': 0.5, 'xanchor': 'center', 'y': PLOT_TITLE_Y, 'yanchor': 'top', 'yref': 'container'},
+                width=_FIG_W, height=_FIG_H,
+                autosize=False,
+                showlegend=False,
+                xaxis=dict(
+                    title='Longitude',
+                    tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
+                    range=x_range,
+                    showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
+                    showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
+                    constrain='domain',
+                ),
+                yaxis=dict(
+                    title='Latitude',
+                    tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
+                    range=y_range,
+                    showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
+                    showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
+                    scaleanchor='x', scaleratio=1,
+                    constrain='domain',
+                ),
+                plot_bgcolor=CLR_PLOT_BG,
+                paper_bgcolor=CLR_PLOT_BG,
+                margin=dict(autoexpand=False, l=_ML, r=_MR, t=_MT, b=_MB),
+            )
             
         return fig, plot_df
 
@@ -794,30 +756,30 @@ class StormPlotter:
         # Meteorological azimuth: 0 = N, CW
         azimuth_deg = np.degrees(np.arctan2(x_km, y_km)) % 360
 
-        heading_per_obs = None
+        mean_heading = None
         if up_convention == "Relative to Storm Motion":
-            # Compute storm heading at each obs time by finite-differencing the
-            # interpolated track with a small time offset
-            dt = 60.0  # seconds
-            lat_fwd = np.interp(obs_epochs + dt, track_epochs, track_lats)
-            lon_fwd = np.interp(obs_epochs + dt, track_epochs, track_lons)
-            dlat_h  = np.radians(lat_fwd - cen_lats)
-            dlon_h  = np.radians(lon_fwd - cen_lons)
-            mean_l  = np.radians((lat_fwd + cen_lats) / 2.0)
-            dy_h    = EARTH_R_KM * dlat_h
-            dx_h    = EARTH_R_KM * dlon_h * np.cos(mean_l)
-            heading_per_obs = np.degrees(np.arctan2(dx_h, dy_h)) % 360
+            # Compute a single median heading from the track itself by
+            # finite-differencing consecutive track points.  Using one fixed
+            # angle for all observations avoids per-point jitter that makes
+            # the plot look wiggly.
+            dlat_tr = np.diff(track_lats)
+            dlon_tr = np.diff(track_lons)
+            mean_lat_tr = np.radians((track_lats[:-1] + track_lats[1:]) / 2.0)
+            dy_tr = EARTH_R_KM * np.radians(dlat_tr)
+            dx_tr = EARTH_R_KM * np.radians(dlon_tr) * np.cos(mean_lat_tr)
+            headings = np.degrees(np.arctan2(dx_tr, dy_tr)) % 360
+            mean_heading = float(np.nanmedian(headings))
 
-            # Rotate azimuths so that storm motion direction → "up" (0°)
-            azimuth_deg = (azimuth_deg - heading_per_obs) % 360
-
-            # Rotate x_km/y_km accordingly
-            theta_rad = np.radians(heading_per_obs)
+            # Apply one uniform rotation to all points
+            theta_rad = np.radians(mean_heading)
             x_rot =  x_km * np.cos(theta_rad) + y_km * np.sin(theta_rad)
             y_rot = -x_km * np.sin(theta_rad) + y_km * np.cos(theta_rad)
             x_km, y_km = x_rot, y_rot
 
-        return x_km, y_km, range_km, azimuth_deg, heading_per_obs
+            # Rotate azimuths by the same fixed angle
+            azimuth_deg = (azimuth_deg - mean_heading) % 360
+
+        return x_km, y_km, range_km, azimuth_deg, mean_heading
 
     def get_sr_max_range(self, group_name, sr_track_grp, df_override=None):
         """Returns the maximum storm-relative range (km) across observations,
@@ -872,22 +834,7 @@ class StormPlotter:
         if not all([lat_col, lon_col, time_col, variable in df.columns]):
             return None, None
 
-        # Compute colorscale range from the FULL group before any filtering,
-        # matching the same logic as plot() so both views use identical colorscales.
-        _full_vals = df[variable].dropna().values
-        if variable.lower() == 'time':
-            _tr = self._convert_time_to_relative(_full_vals)
-            if _tr is not None:
-                _full_vals = _tr[0]
         _var_conf_sr = GLOBAL_VAR_CONFIG.get(variable.lower(), {})
-        _full_cmin = float(_var_conf_sr['cmin']) if _var_conf_sr.get('cmin') is not None else (
-            float(np.nanmin(_full_vals)) if len(_full_vals) > 0 else 0.0)
-        _full_cmax = float(_var_conf_sr['cmax']) if _var_conf_sr.get('cmax') is not None else (
-            float(np.nanmax(_full_vals)) if len(_full_vals) > 0 else 1.0)
-        if variable.lower() == 'time':
-            _full_cmin = max(_full_cmin, -10800.0)
-            _full_cmax = min(_full_cmax,  10800.0)
-
         # Apply vertical constraint and time bounds — NO domain_bounds filter;
         # SR uses all observations to compute the polar extent from the data.
         if z_con:
@@ -924,11 +871,23 @@ class StormPlotter:
             sr_max_range = float(domain_bounds['_sr_max_range_km'])
         if sr_max_range is not None:
             mask = range_km <= sr_max_range
-            x_km       = x_km[mask]
-            y_km       = y_km[mask]
-            range_km   = range_km[mask]
+            x_km        = x_km[mask]
+            y_km        = y_km[mask]
+            range_km    = range_km[mask]
             azimuth_deg = azimuth_deg[mask]
-            df         = df[mask]
+            df          = df[mask]
+
+        # Apply vertical range filter from domain controls
+        if domain_bounds and 'z_min' in domain_bounds and 'z_col' in domain_bounds:
+            z_col_sr = domain_bounds['z_col']
+            if z_col_sr in df.columns:
+                z_v = df[z_col_sr] / 100.0 if domain_bounds.get('z_convert') else df[z_col_sr]
+                vmask = (z_v >= domain_bounds['z_min']) & (z_v <= domain_bounds['z_max'])
+                x_km        = x_km[vmask.values]
+                y_km        = y_km[vmask.values]
+                range_km    = range_km[vmask.values]
+                azimuth_deg = azimuth_deg[vmask.values]
+                df          = df[vmask]
 
         # Attach SR columns to the plotting df
         plot_df = df.copy()
@@ -937,7 +896,22 @@ class StormPlotter:
         plot_df['_sr_range']  = range_km
         plot_df['_sr_az']     = azimuth_deg
 
-        # --- Color setup (uses full-group range computed above) ---
+        # Compute colorscale range from the filtered plot_df so the colorbar
+        # always auto-scales to whatever SR range/time/level is currently visible.
+        _filtered_sr_vals = plot_df[variable].dropna().values
+        if variable.lower() == 'time':
+            _tr = self._convert_time_to_relative(_filtered_sr_vals)
+            if _tr is not None:
+                _filtered_sr_vals = _tr[0]
+        _full_cmin = float(_var_conf_sr['cmin']) if _var_conf_sr.get('cmin') is not None else (
+            float(np.nanmin(_filtered_sr_vals)) if len(_filtered_sr_vals) > 0 else 0.0)
+        _full_cmax = float(_var_conf_sr['cmax']) if _var_conf_sr.get('cmax') is not None else (
+            float(np.nanmax(_filtered_sr_vals)) if len(_filtered_sr_vals) > 0 else 1.0)
+        if variable.lower() == 'time':
+            _full_cmin = max(_full_cmin, -10800.0)
+            _full_cmax = min(_full_cmax,  10800.0)
+
+        # --- Color setup (uses filtered range computed above) ---
         var_conf   = GLOBAL_VAR_CONFIG.get(variable.lower(), {})
         cmap       = var_conf.get('colorscale', 'Jet')
         cmid_conf  = var_conf.get('cmid')
@@ -977,20 +951,25 @@ class StormPlotter:
         sz_mult = marker_size_pct / 100.0
 
         # --- Range ring geometry ---
+        # Use a nice tick interval so rings align exactly with axis ticks.
         raw_max = float(np.nanmax(range_km)) if len(range_km) > 0 else 200.0
-        if sr_max_range is not None:
-            padded = sr_max_range
-        else:
-            padded = raw_max
-        ring_spacing = 25.0 if padded <= 150 else 50.0 if padded <= 500 else 100.0
+        padded  = sr_max_range if sr_max_range is not None else raw_max
+
+        # Pick smallest candidate that gives 3–8 rings across the axis.
+        _candidates = [10, 25, 50, 100, 150, 200, 250, 500]
+        ring_spacing = next(
+            (c for c in _candidates if 3 <= padded / c <= 8),
+            _candidates[-1]
+        )
         max_range  = np.ceil(padded / ring_spacing) * ring_spacing
-        ring_radii = np.arange(ring_spacing, max_range + 1, ring_spacing)
+        ring_radii = np.arange(ring_spacing, max_range + ring_spacing * 0.01, ring_spacing)
 
         theta_ring = np.linspace(0, 2 * np.pi, 360)
+        spoke_len  = max_range  # spokes reach exactly to the outermost ring
 
         fig = go.Figure()
 
-        # Draw range rings
+        # Draw range rings (no labels — distances shown on axis ticks)
         for r in ring_radii:
             fig.add_trace(go.Scatter(
                 x=r * np.sin(theta_ring),
@@ -1000,23 +979,9 @@ class StormPlotter:
                 showlegend=False, hoverinfo='skip',
                 name=f'{r:.0f} km ring'
             ))
-            # Label the ring on the right side
-            fig.add_annotation(
-                x=r, y=0,
-                text=f"{r:.0f} km",
-                showarrow=False,
-                font=dict(size=FS_PLOT_TICK - 1, color=CLR_MUTED),
-                xanchor='left', yanchor='middle'
-            )
 
-        # Draw spokes: N/S/E/W (or FWD/AFT/RIGHT/LEFT for storm-motion up)
-        if up_convention == "Relative to Storm Motion":
-            spoke_labels = {0: 'FWD', 90: 'RIGHT', 180: 'AFT', 270: 'LEFT'}
-        else:
-            spoke_labels = {0: 'N', 90: 'E', 180: 'S', 270: 'W'}
-
-        spoke_len = ring_radii[-1] * 1.08 if len(ring_radii) > 0 else max_range * 1.08
-        for angle_deg, label in spoke_labels.items():
+        # Draw spokes (no labels — direction clear from axis labels / title)
+        for angle_deg in [0, 90, 180, 270]:
             sx = spoke_len * np.sin(np.radians(angle_deg))
             sy = spoke_len * np.cos(np.radians(angle_deg))
             fig.add_trace(go.Scatter(
@@ -1025,13 +990,6 @@ class StormPlotter:
                 line=dict(color=CLR_PLOT_GRID, width=1),
                 showlegend=False, hoverinfo='skip'
             ))
-            fig.add_annotation(
-                x=sx * 1.04, y=sy * 1.04,
-                text=f"<b>{label}</b>",
-                showarrow=False,
-                font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
-                xanchor='center', yanchor='middle'
-            )
 
         # --- Observations scatter ---
         hover_text = [
@@ -1049,10 +1007,7 @@ class StormPlotter:
                 cmin=cmin, cmax=cmax, cmid=cmid,
                 showscale=True,
                 colorbar=dict(
-                    title=cb_title,
-                    title_side='right',
                     len=0.8, thickness=15,
-                    title_font=dict(size=FS_PLOT_TICK),
                     tickfont=dict(size=FS_PLOT_TICK),
                     tickvals=cb_tickvals,
                     ticktext=cb_ticktext
@@ -1143,7 +1098,9 @@ class StormPlotter:
         _ML, _MR, _MB = 80, 120, 80
         _FIG_H       = _FIG_W  # square
 
-        axis_lim = spoke_len * 1.12
+        # axis_lim: just tight to the outermost ring — no extra padding needed
+        # now that spoke/ring labels are gone.
+        axis_lim = max_range
 
         fig.update_layout(
             title={'text': nice_title, 'x': 0.5, 'xanchor': 'center',
@@ -1152,26 +1109,276 @@ class StormPlotter:
             autosize=False,
             showlegend=False,
             xaxis=dict(
-                title=f"East–West distance from center (km)",
-                title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
+                title=(
+                    "Cross-Track Distance from Center (km)"
+                    if up_convention == "Relative to Storm Motion"
+                    else "East–West Distance from Center (km)"
+                ),
                 tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
                 range=[-axis_lim, axis_lim],
-                showgrid=False, zeroline=False,
+                dtick=ring_spacing,
+                tick0=0,
+                showgrid=True, gridcolor=CLR_PLOT_GRID, zeroline=False,
                 showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
                 constrain='domain', scaleanchor='y', scaleratio=1,
             ),
             yaxis=dict(
-                title=f"North–South distance from center (km)",
-                title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
+                title=(
+                    "Along-Track Distance from Center (km)"
+                    if up_convention == "Relative to Storm Motion"
+                    else "North–South Distance from Center (km)"
+                ),
                 tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
                 range=[-axis_lim, axis_lim],
-                showgrid=False, zeroline=False,
+                dtick=ring_spacing,
+                tick0=0,
+                showgrid=True, gridcolor=CLR_PLOT_GRID, zeroline=False,
                 showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
                 constrain='domain',
             ),
             plot_bgcolor=CLR_PLOT_BG,
             paper_bgcolor=CLR_PLOT_BG,
             margin=dict(autoexpand=False, l=_ML, r=_MR, t=_MT, b=_MB),
+        )
+
+        return fig, plot_df
+
+    def plot_radial_height(self, group_name, variable, sr_track_grp,
+                           domain_bounds=None, thinning_pct=None,
+                           marker_size_pct=100, time_bounds=None,
+                           color_scale="Linear scale", rh_z_col=None):
+        """
+        Radial-Height Profile (storm-relative).
+
+        Converts observations to storm-relative polar coordinates using
+        _to_storm_relative(), then plots range_km (X) vs the selected Z column
+        (height or pressure) on Y, colouring markers by `variable`.
+        All azimuths are collapsed — every observation is shown regardless of
+        its bearing from the storm centre.
+
+        Returns (fig, plot_df) matching the signature of plot().
+        """
+        if group_name not in self.data:
+            return None, None
+
+        df = self.data[group_name].copy()
+        cols_lower = {c.lower(): c for c in df.columns}
+
+        lat_col  = next((cols_lower[c] for c in ['lat', 'latitude']  if c in cols_lower), None)
+        lon_col  = next((cols_lower[c] for c in ['lon', 'longitude'] if c in cols_lower), None)
+        time_col = cols_lower.get('time')
+
+        # Use caller-supplied Z column; fall back to first height/pressure found
+        if rh_z_col and rh_z_col in df.columns:
+            z_col = rh_z_col
+        else:
+            z_col = next((cols_lower[c] for c in
+                          ['height', 'ght', 'altitude', 'elev', 'pres', 'pressure', 'p']
+                          if c in cols_lower), None)
+
+        if not all([lat_col, lon_col, time_col, z_col, variable in df.columns]):
+            return None, None
+
+        # Apply time filter
+        if time_bounds and time_col in df.columns:
+            df = df[(df[time_col] >= time_bounds['min']) &
+                    (df[time_col] <= time_bounds['max'])]
+
+        df = df.dropna(subset=[lat_col, lon_col, time_col, z_col, variable])
+        if df.empty:
+            return None, None
+
+        # Thinning
+        if thinning_pct and thinning_pct < 100:
+            df = df.sample(frac=thinning_pct / 100.0, random_state=42)
+
+        # --- Storm-relative conversion (we only need range_km) ---
+        result = self._to_storm_relative(
+            df[lon_col].values, df[lat_col].values,
+            df[time_col].values, sr_track_grp, "Relative to North"
+        )
+        if result is None:
+            return None, None
+
+        _, _, range_km, _, _ = result
+
+        # Apply max-range filter from domain_bounds
+        sr_max_range = None
+        if domain_bounds and '_sr_max_range_km' in domain_bounds:
+            sr_max_range = float(domain_bounds['_sr_max_range_km'])
+        if sr_max_range is not None:
+            mask     = range_km <= sr_max_range
+            range_km = range_km[mask]
+            df       = df[mask]
+
+        if len(df) == 0:
+            return None, None
+
+        # Attach radius column
+        plot_df = df.copy()
+        plot_df['_rh_range_km'] = range_km
+
+        # Apply vertical (z) limits from domain_bounds
+        if domain_bounds and 'z_min' in domain_bounds and 'z_col' in domain_bounds:
+            z_b_col = domain_bounds['z_col']
+            if z_b_col in plot_df.columns:
+                z_b_vals = plot_df[z_b_col].copy()
+                if domain_bounds.get('z_convert'):
+                    z_b_vals = z_b_vals / 100.0
+                plot_df = plot_df[(z_b_vals >= domain_bounds['z_min']) & (z_b_vals <= domain_bounds['z_max'])]
+                if len(plot_df) == 0:
+                    return None, None
+
+        z_vals     = plot_df[z_col].values
+        color_vals = plot_df[variable].values
+
+        # --- Z axis label, units, and pressure reversal flag ---
+        is_pres  = any(p in z_col.lower() for p in ['pres', 'pressure', 'p'])
+        z_meta   = self.var_attrs.get(group_name, {}).get(z_col, {})
+        z_units  = decode_metadata(z_meta.get('units', 'hPa' if is_pres else 'm'))
+        # Convert Pa → hPa for display if needed
+        if is_pres and 'Pa' in z_units and 'hPa' not in z_units:
+            z_vals  = z_vals / 100.0
+            z_units = 'hPa'
+        z_label  = f"{'Pressure' if is_pres else 'Height'} ({z_units})"
+
+        # --- Colorscale setup (from filtered data) ---
+        var_conf   = GLOBAL_VAR_CONFIG.get(variable.lower(), {})
+        cmap       = var_conf.get('colorscale', 'Jet')
+        cmid_conf  = var_conf.get('cmid')
+        cmid       = float(cmid_conf) if cmid_conf is not None else None
+        cb_tickvals, cb_ticktext = None, None
+
+        _color_work = color_vals.copy().astype(float)
+        if variable.lower() == 'time':
+            _ax = {}
+            _color_work = self._apply_time_axis(variable, _color_work, _ax, is_x=False)
+            cb_tickvals = _ax.get('tickvals')
+            cb_ticktext = _ax.get('ticktext')
+
+        cmin_conf = var_conf.get('cmin')
+        cmax_conf = var_conf.get('cmax')
+        cmin = float(cmin_conf) if cmin_conf is not None else float(np.nanmin(_color_work))
+        cmax = float(cmax_conf) if cmax_conf is not None else float(np.nanmax(_color_work))
+
+        if color_scale == "Log scale":
+            pos_mask = _color_work > 0
+            log_c    = np.full_like(_color_work, np.nan, dtype=float)
+            log_c[pos_mask] = np.log10(_color_work[pos_mask])
+            _color_work = log_c
+            real_cmin = cmin if cmin > 0 else (float(np.nanmin(color_vals[pos_mask])) if pos_mask.any() else 1e-3)
+            real_cmax = cmax if cmax > 0 else (float(np.nanmax(color_vals[pos_mask])) if pos_mask.any() else 1.0)
+            cmin = np.log10(real_cmin)
+            cmax = np.log10(real_cmax)
+            cmid = None
+            mn, mx = int(np.floor(cmin)), int(np.ceil(cmax))
+            cb_tickvals = np.arange(mn, mx + 1, dtype=float) if mx > mn else [cmin, cmax]
+            cb_ticktext = [f"1e{int(p)}" if p < -3 or p > 3 else f"{10**p:g}" for p in cb_tickvals]
+
+        # --- Axis limits ---
+        # X: 0 → max range (snapped to ring-spacing multiple)
+        x_max_raw = float(np.nanmax(range_km)) if len(range_km) > 0 else 200.0
+        x_max     = sr_max_range if sr_max_range is not None else x_max_raw
+        _candidates = [10, 25, 50, 100, 150, 200, 250, 500]
+        ring_spacing = next((c for c in _candidates if 3 <= x_max / c <= 8), _candidates[-1])
+        x_axis_max = np.ceil(x_max / ring_spacing) * ring_spacing
+
+        # Y: axis range and tick setup depend on whether it's pressure or height
+        # If domain_bounds has explicit z limits, use those for the axis range
+        has_z_bounds = (domain_bounds and 'z_min' in domain_bounds and
+                        domain_bounds.get('z_col') == z_col)
+        if is_pres:
+            if has_z_bounds:
+                y_axis_min = domain_bounds['z_min']
+                y_axis_max = domain_bounds['z_max']
+            else:
+                y_min_raw = float(np.nanmin(z_vals)) if len(z_vals) > 0 else 100.0
+                y_max_raw = float(np.nanmax(z_vals)) if len(z_vals) > 0 else 1013.0
+                # Snap to clean hPa boundaries
+                for step in [10, 25, 50, 100]:
+                    y_axis_min = np.floor(y_min_raw / step) * step
+                    y_axis_max = np.ceil(y_max_raw  / step) * step
+                    if (y_axis_max - y_axis_min) / step <= 20:
+                        break
+            y_range   = [y_axis_max, y_axis_min]   # reversed: high P at bottom
+            y_autorev = False
+        else:
+            if has_z_bounds:
+                y_axis_min = domain_bounds['z_min']
+                y_axis_max = domain_bounds['z_max']
+            else:
+                y_max_raw = float(np.nanmax(z_vals)) if len(z_vals) > 0 else 15000.0
+                for step in [500, 1000, 2000, 2500, 5000, 10000]:
+                    y_axis_max = np.ceil(y_max_raw / step) * step
+                    if y_axis_max / step <= 20:
+                        break
+                y_axis_min = 0
+            y_range   = [y_axis_min, y_axis_max]
+            y_autorev = False
+
+        # --- Figure ---
+        sz_mult      = marker_size_pct / 100.0
+        display_name = self._get_var_display_name(group_name, variable)
+
+        z_disp_label = 'Pressure' if is_pres else 'Height'
+        z_unit_str   = z_units
+        hover_text = [
+            f"Range: {r:.1f} km<br>{z_disp_label}: {z:.1f} {z_unit_str}<br>{variable}: {v:.2f}"
+            if not (np.isnan(r) or np.isnan(z) or np.isnan(v)) else "NaN"
+            for r, z, v in zip(range_km, z_vals, color_vals)
+        ]
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=range_km,
+            y=z_vals,
+            mode='markers',
+            marker=dict(
+                size=9 * sz_mult,
+                color=_color_work,
+                colorscale=cmap,
+                cmin=cmin, cmax=cmax, cmid=cmid,
+                showscale=True,
+                colorbar=dict(
+                    len=0.8, thickness=15,
+                    tickfont=dict(size=FS_PLOT_TICK),
+                    tickvals=cb_tickvals,
+                    ticktext=cb_ticktext,
+                )
+            ),
+            text=hover_text,
+            hoverinfo='text',
+            showlegend=False,
+        ))
+
+        nice_title = self._format_title(group_name, variable, "Radial-Height Profile | Storm-Relative")
+        _MT = self._title_top_margin(nice_title)
+
+        fig.update_layout(
+            title={'text': nice_title, 'x': 0.5, 'xanchor': 'center',
+                   'y': PLOT_TITLE_Y, 'yanchor': 'top', 'yref': 'container'},
+            width=800, height=600,
+            autosize=False,
+            showlegend=False,
+            xaxis=dict(
+                title='Radius from Storm Center (km)',
+                range=[0, x_axis_max],
+                dtick=ring_spacing,
+                tick0=0,
+                tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
+                showgrid=True, gridcolor=CLR_PLOT_GRID, zeroline=False,
+                showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
+            ),
+            yaxis=dict(
+                title=z_label,
+                range=y_range,
+                tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
+                showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
+                showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
+            ),
+            plot_bgcolor=CLR_PLOT_BG,
+            paper_bgcolor=CLR_PLOT_BG,
+            margin=dict(l=80, r=120, t=_MT, b=60),
         )
 
         return fig, plot_df
@@ -1196,7 +1403,6 @@ class StormPlotter:
         def _make_var_axis(is_x):
             d = dict(
                 title=display_name,
-                title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
                 tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
                 showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
                 showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True
@@ -1208,7 +1414,6 @@ class StormPlotter:
         def _make_count_axis():
             return dict(
                 title=count_label,
-                title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
                 tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
                 showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
                 showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True
@@ -1286,16 +1491,18 @@ class StormPlotter:
         H = H.T
         
         # 2. Apply requested normalization math
-        if normalization == "Full Normalization (all bins sum to 100%)":
+        # normalization is expressed in terms of the physical X/Y axes of H
+        # (translation from Primary/Secondary happens in plot_histogram_2d)
+        if normalization == "Normalize Fully":
             total = H.sum()
             if total > 0:
                 H = (H / total) * 100.0
-        elif normalization == "Row Normalization (fix Y, sum X to 100%)":
-            # For each fixed Y bin (row), normalize all X bins so they sum to 100%
+        elif normalization == "Normalize within each Y bin":
+            # For each fixed Y bin (row), all X bins sum to 100%
             row_sums = H.sum(axis=1, keepdims=True)
             H = np.divide(H, row_sums, out=np.zeros_like(H), where=row_sums != 0) * 100.0
-        elif normalization == "Column Normalization (fix X, sum Y to 100%)":
-            # For each fixed X bin (col), normalize all Y bins so they sum to 100%
+        elif normalization == "Normalize within each X bin":
+            # For each fixed X bin (col), all Y bins sum to 100%
             col_sums = H.sum(axis=0, keepdims=True)
             H = np.divide(H, col_sums, out=np.zeros_like(H), where=col_sums != 0) * 100.0
             
@@ -1315,20 +1522,26 @@ class StormPlotter:
         if plot_df.empty: return None
 
         # 1. Resolve axes BEFORE math happens
+        # "(Primary)" / "(Secondary)" suffixes are fixed to the variable roles,
+        # not to the physical axis, so they don't flip with reverse_axes.
+        primary_name   = self._get_var_display_name(group_name, variable)
+        secondary_name = self._get_var_display_name(group_name, coord_var)
         if reverse_axes:
             x_vals, y_vals = plot_df[variable].values, plot_df[coord_var].values
-            x_name = self._get_var_display_name(group_name, variable)
-            y_name = self._get_var_display_name(group_name, coord_var)
+            x_name = f"{primary_name} (Primary)"
+            y_name = f"{secondary_name} (Secondary)"
             x_var_col, y_var_col = variable, coord_var
         else:
             x_vals, y_vals = plot_df[coord_var].values, plot_df[variable].values
-            x_name = self._get_var_display_name(group_name, coord_var)
-            y_name = self._get_var_display_name(group_name, variable)
+            x_name = f"{secondary_name} (Secondary)"
+            y_name = f"{primary_name} (Primary)"
             x_var_col, y_var_col = coord_var, variable
 
-        nice_title = self._format_title(group_name, y_var_col, f"Binned by {x_name}")
+        # Title and colorscale always follow the primary variable, regardless of axis orientation
+        nice_title = self._format_title(group_name, variable, f"Binned by {secondary_name}")
 
-        var_conf = GLOBAL_VAR_CONFIG.get(y_var_col.lower(), {})
+        _var_key = variable[len('_log10_'):] if variable.startswith('_log10_') else variable
+        var_conf = GLOBAL_VAR_CONFIG.get(_var_key.lower(), {})
         cmap_name = var_conf.get('colorscale', 'Viridis')
         
         try:
@@ -1337,27 +1550,25 @@ class StormPlotter:
             custom_cmap = []
             for val, clr in base_cmap:
                 if float(val) == 0.0:
-                    custom_cmap.append([0.0, '#ffffff'])
+                    custom_cmap.append([0.0, 'rgba(0,0,0,0)'])
                 else:
                     custom_cmap.append([float(val), clr])
         except Exception:
             custom_cmap = cmap_name
 
-        cb_title = 'Percentage (%)' if normalization != "None" else 'Count'
+        cb_title = 'Percentage (%)' if normalization not in ("None", None) else 'Count'
 
         xaxis_dict = dict(
             title=x_name, 
-            title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
             tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
             showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
-            showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True          
+            showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True
         )
         yaxis_dict = dict(
             title=y_name, 
-            title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
             tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
             showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
-            showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True          
+            showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True
         )
 
         if x_var_col.lower() == 'p' or 'pres' in x_var_col.lower() or x_var_col.lower().endswith('_p'):
@@ -1370,7 +1581,14 @@ class StormPlotter:
         y_vals = self._apply_time_axis(y_var_col, y_vals, yaxis_dict, is_x=False)
 
         # Compute heatmap matrix with (possibly converted) values
-        H, x_centers, y_centers = self._compute_2d_normalization(x_vals, y_vals, nbinsx, nbinsy, normalization)
+        # Translate Primary/Secondary normalization into X/Y terms based on current axis orientation.
+        # Primary is on Y by default; reverse_axes puts Primary on X.
+        _norm = normalization
+        if normalization == "Normalize within each Primary bin":
+            _norm = "Normalize within each X bin" if reverse_axes else "Normalize within each Y bin"
+        elif normalization == "Normalize within each Secondary bin":
+            _norm = "Normalize within each Y bin" if reverse_axes else "Normalize within each X bin"
+        H, x_centers, y_centers = self._compute_2d_normalization(x_vals, y_vals, nbinsx, nbinsy, _norm)
 
         fig = go.Figure()
         fig.add_trace(go.Heatmap(
@@ -1379,7 +1597,7 @@ class StormPlotter:
             y=y_centers,
             colorscale=custom_cmap,
             zmin=0,
-            colorbar=dict(title=cb_title, len=0.8, thickness=15, title_font=dict(size=FS_PLOT_TICK), tickfont=dict(size=FS_PLOT_TICK))
+            colorbar=dict(len=0.8, thickness=15, tickfont=dict(size=FS_PLOT_TICK))
         ))
 
         fig.update_layout(
@@ -1390,11 +1608,11 @@ class StormPlotter:
             yaxis=yaxis_dict,
             plot_bgcolor=CLR_PLOT_BG,    
             paper_bgcolor=CLR_PLOT_BG,   
-            margin=dict(l=60, r=40, t=self._title_top_margin(nice_title), b=60), 
+            margin=dict(l=60, r=40, t=self._title_top_margin(nice_title), b=60),
         )
         return fig
 
-    def plot_scatter(self, group_name, variable, coord_var, color_mapping="Density", show_trendline=False, reverse_axes=False):
+    def plot_scatter(self, group_name, variable, coord_var, color_var=None, show_trendline=False, reverse_axes=False, marker_size_pct=100):
         """
         Scatter plot of variable (X-axis) vs coord_var (Y-axis).
 
@@ -1422,52 +1640,33 @@ class StormPlotter:
 
         x_name = self._get_var_display_name(group_name, x_var_col)
         y_name = self._get_var_display_name(group_name, y_var_col)
-        nice_title = self._format_title(group_name, y_var_col, f"vs. {x_name}")
+        _color_suffix = f", Color: {self._get_var_display_name(group_name, color_var)}" if color_var and color_var in plot_df.columns else ""
+        nice_title = self._format_title(group_name, y_var_col, f"vs. {x_name}{_color_suffix}")
 
         # --- Color array ---
-        if color_mapping == "Density":
+        if color_var and color_var in plot_df.columns:
+            color_vals = plot_df[color_var].values
+            var_conf   = GLOBAL_VAR_CONFIG.get(color_var.lower(), {})
+            cmap       = var_conf.get('colorscale', 'Viridis')
+            cmid       = var_conf.get('cmid', None)
+        else:
+            # Default: density coloring
             H, xedges, yedges = np.histogram2d(x_vals, y_vals, bins=50)
             xi = np.clip(np.searchsorted(xedges, x_vals) - 1, 0, H.shape[0] - 1)
             yi = np.clip(np.searchsorted(yedges, y_vals) - 1, 0, H.shape[1] - 1)
             color_vals = H[xi, yi]
-            cb_title = "Density"
-            cmap = "Viridis"
-            cmid = None
-        elif color_mapping == "Z-Coordinate":
-            coord_vars = self.get_coordinate_variables(group_name)
-            z_candidates = [c for c in coord_vars if c != coord_var and c != variable]
-            if z_candidates and z_candidates[0] in plot_df.columns:
-                z_col = z_candidates[0]
-                color_vals = plot_df[z_col].values
-                cb_title = self._get_var_display_name(group_name, z_col)
-                var_conf = GLOBAL_VAR_CONFIG.get(z_col.lower(), {})
-            else:
-                H, xedges, yedges = np.histogram2d(x_vals, y_vals, bins=50)
-                xi = np.clip(np.searchsorted(xedges, x_vals) - 1, 0, H.shape[0] - 1)
-                yi = np.clip(np.searchsorted(yedges, y_vals) - 1, 0, H.shape[1] - 1)
-                color_vals = H[xi, yi]
-                cb_title = "Density"
-                var_conf = {}
-            cmap = var_conf.get('colorscale', 'Viridis')
-            cmid = var_conf.get('cmid', None)
-        else:  # "Variable"
-            color_vals = plot_df[variable].values if not reverse_axes else plot_df[coord_var].values
-            cb_title = x_name
-            var_conf = GLOBAL_VAR_CONFIG.get(x_var_col.lower(), {})
-            cmap = var_conf.get('colorscale', 'Viridis')
-            cmid = var_conf.get('cmid', None)
+            cmap       = "Viridis"
+            cmid       = None
 
         # --- Axis config with pressure reversal and time conversion ---
         xaxis_dict = dict(
             title=x_name,
-            title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
             tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
             showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
             showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True
         )
         yaxis_dict = dict(
             title=y_name,
-            title_font=dict(size=FS_PLOT_AXIS, color=CLR_PRIMARY),
             tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
             showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
             showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True
@@ -1483,19 +1682,24 @@ class StormPlotter:
 
         fig = go.Figure()
 
-        fig.add_trace(go.Scatter(
-            x=x_vals,
-            y=y_vals,
-            mode='markers',
-            marker=dict(
-                size=5,
+        sz = max(1, int(5 * marker_size_pct / 100))
+        if color_var and color_var in plot_df.columns:
+            marker_dict = dict(
+                size=sz,
                 color=color_vals,
                 colorscale=cmap,
                 cmid=cmid,
                 showscale=True,
-                colorbar=dict(title=cb_title, len=0.8, thickness=15,
-                              title_font=dict(size=FS_PLOT_TICK), tickfont=dict(size=FS_PLOT_TICK))
-            ),
+                colorbar=dict(len=0.8, thickness=15, tickfont=dict(size=FS_PLOT_TICK))
+            )
+        else:
+            marker_dict = dict(size=sz, color=CLR_PRIMARY)
+
+        fig.add_trace(go.Scatter(
+            x=x_vals,
+            y=y_vals,
+            mode='markers',
+            marker=marker_dict,
             name=x_name,
             showlegend=False
         ))

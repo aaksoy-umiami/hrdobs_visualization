@@ -102,14 +102,18 @@ def setup_page():
         initial_sidebar_state="expanded",
         menu_items={
             'Report a bug': "mailto:aaksoy@miami.edu",
+            'Get help': "https://TBD",
             'About': """
             ### HRDOBS Dataset Explorer & Visualizer
-            **Search, filter, and map AI-Ready tropical cyclone observations**
+            **Interactive tool for exploring AI-Ready HDF5 hurricane reconnaissance observations**
 
-            This tool explores and visualizes the HRDOBS AI-Ready HDF5 database.
+            Visualize, filter, and analyze the HRDOBS database — including flight-level,
+            dropsonde, SFMR, and radar observations from NOAA and Air Force reconnaissance aircraft.
 
             **Author:** Altug Aksoy
             **Affiliation:** CIMAS/Rosenstiel School, University of Miami & NOAA/AOML/HRD
+
+            *For questions or bug reports, contact aaksoy@miami.edu*
             """
         }
     )

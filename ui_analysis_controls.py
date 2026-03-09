@@ -23,14 +23,21 @@ class AnalysisIntent:
     coord_var: Optional[str] = None
     hist_bins_x: Optional[int] = None
     hist_bins_y: Optional[int] = None
-    normalization: str = "None"  # <--- Added
+    normalization: str = "None"
     reverse_axes: bool = False
     render_as_line: bool = False
+    scatter_trendline: bool = False
+    scatter_color_var: Optional[str] = None
+    scatter_marker_size: int = 100
+    log_var: bool = False        # log10 transform on primary variable
+    log_coord_var: bool = False  # log10 transform on secondary/coord variable
 
 _ANALYSIS_STATE_KEYS = [
     'a_sel_group', 'a_variable', 'a_coord_var', 'a_analysis_type', 
     'a_bin_mode_x', 'a_bin_manual_x', 'a_bin_mode_y', 'a_bin_manual_y', 
-    'a_hist_norm', 'a_reverse_axes', 'a_render_as_line', 'a_scatter_trendline', 'a_scatter_color'
+    'a_hist_norm', 'a_reverse_axes', 'a_render_as_line', 'a_scatter_trendline',
+    'a_scatter_color', 'a_scatter_color_var', 'a_scatter_marker_size',
+    'a_log_var', 'a_log_coord_var'
 ]
 
 def _render_analysis_variable_section(data_pack, plotter, analysis_type):
@@ -55,14 +62,25 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
             st.info("Statistical analysis not available for flight tracks.")
         else:
             is_scatter = (analysis_type == "Scatter Analysis")
-            label_1 = "First Variable (Y-axis)" if is_scatter else "Variable"
-            label_2 = "Second Variable (X-axis)" if is_scatter else "Coordinate Variable"
-            
+            is_2d_hist = (analysis_type == "Histogram Analysis (2D)")
+
             if is_scatter:
+                label_1 = "First Variable"
+                label_2 = "Second Variable"
+            elif is_2d_hist:
+                label_1 = "Primary Variable"
+                label_2 = "Secondary Variable"
+            else:
+                label_1 = "Variable"
+                label_2 = "Coordinate Variable"
+
+            ordered = []
+            if is_scatter or is_2d_hist:
                 base_vars = plotter.get_plottable_variables(sel_group)
                 coord_vars = plotter.get_coordinate_variables(sel_group)
-                list_1 = sorted(list(set(base_vars + coord_vars)))
-                list_2 = list_1 
+                ordered = base_vars + [c for c in coord_vars if c not in base_vars]
+                list_1 = ordered
+                list_2 = ordered
             else:
                 list_1 = plotter.get_plottable_variables(sel_group)
                 list_2 = plotter.get_coordinate_variables(sel_group)
@@ -77,6 +95,9 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
                     key='a_variable',
                     format_func=lambda x: plotter._get_var_display_name(sel_group, x)
                 )
+                if 'a_log_var' not in st.session_state:
+                    st.session_state.a_log_var = False
+                st.checkbox("Show on log scale", key='a_log_var')
             else:
                 st.warning("No valid variables found.")
 
@@ -91,10 +112,15 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
                     format_func=lambda x: plotter._get_var_display_name(sel_group, x),
                     disabled=(analysis_type == "Histogram Analysis (1D)")
                 )
+                if 'a_log_coord_var' not in st.session_state:
+                    st.session_state.a_log_coord_var = False
+                st.checkbox("Show on log scale ", key='a_log_coord_var',
+                            disabled=(analysis_type == "Histogram Analysis (1D)"))
             else:
                 st.warning("No valid secondary variables found for this group.")
 
-    return sel_group, variable, coord_var
+    _ordered = ordered if (is_scatter or is_2d_hist) else []
+    return sel_group, variable, coord_var, _ordered
 
 
 def render_analysis_controls() -> AnalysisIntent:
@@ -132,7 +158,7 @@ def render_analysis_controls() -> AnalysisIntent:
         )
         intent.analysis_type = analysis_type
         
-    sel_group, variable, coord_var = _render_analysis_variable_section(data_pack, plotter, analysis_type)
+    sel_group, variable, coord_var, scatter_var_list = _render_analysis_variable_section(data_pack, plotter, analysis_type)
     intent.sel_group = sel_group
     intent.variable = variable
     intent.coord_var = coord_var
@@ -185,7 +211,7 @@ def render_analysis_controls() -> AnalysisIntent:
             if 'a_hist_norm' not in st.session_state:
                 st.session_state.a_hist_norm = "None"
                 
-            norm_opts = ["None", "Normalize Along X Axis", "Normalize Along Y Axis", "Normalize Fully"] if is_2d else ["None", "Normalize Fully"]
+            norm_opts = ["None", "Normalize within each Primary bin", "Normalize within each Secondary bin", "Normalize Fully"] if is_2d else ["None", "Normalize Fully"]
             
             if st.session_state.a_hist_norm not in norm_opts:
                 st.session_state.a_hist_norm = "None"
@@ -213,11 +239,38 @@ def render_analysis_controls() -> AnalysisIntent:
         section_divider()
         st.markdown("#### Scatter Controls")
         
-        if 'a_scatter_trendline' not in st.session_state: st.session_state.a_scatter_trendline = False
-        st.checkbox("Show Trendline", key="a_scatter_trendline", disabled=not is_scatter)
-        
-        if 'a_scatter_color' not in st.session_state: st.session_state.a_scatter_color = "Density"
-        st.selectbox("Color Mapping", ["Density", "Z-Coordinate", "Variable"], key="a_scatter_color", disabled=not is_scatter)
+        st.checkbox("Show Trendline", value=False, key="a_scatter_trendline", disabled=not is_scatter)
+
+        color_opts = ["None", "Variable:"]
+        if 'a_scatter_color' not in st.session_state or st.session_state.a_scatter_color not in color_opts:
+            st.session_state.a_scatter_color = "None"
+        scatter_color_mode = st.selectbox("Color By", color_opts, key="a_scatter_color", disabled=not is_scatter)
+
+        color_by_var = (is_scatter and scatter_color_mode == "Variable:")
+        if scatter_var_list:
+            if 'a_scatter_color_var' not in st.session_state or st.session_state.a_scatter_color_var not in scatter_var_list:
+                st.session_state.a_scatter_color_var = scatter_var_list[0]
+            st.selectbox(
+                "Color Variable", scatter_var_list,
+                key="a_scatter_color_var",
+                format_func=lambda x: plotter._get_var_display_name(intent.sel_group or "", x),
+                disabled=not color_by_var,
+                label_visibility="collapsed"
+            )
+
+        sidebar_label("Marker Size:", size='label', enabled=is_scatter)
+        if 'a_scatter_marker_size' not in st.session_state:
+            st.session_state.a_scatter_marker_size = 100
+        st.slider("Scatter Marker Size", min_value=10, max_value=200, step=10,
+                  format="%d%%", key="a_scatter_marker_size",
+                  disabled=not is_scatter, label_visibility="collapsed")
+
+        intent.scatter_trendline  = st.session_state.get('a_scatter_trendline', False) if is_scatter else False
+        intent.scatter_color_var  = st.session_state.get('a_scatter_color_var') if color_by_var else None
+        intent.scatter_marker_size = st.session_state.get('a_scatter_marker_size', 100) if is_scatter else 100
+
+    intent.log_var       = st.session_state.get('a_log_var', False)
+    intent.log_coord_var = st.session_state.get('a_log_coord_var', False)
 
 
     for k in list(st.session_state.keys()):

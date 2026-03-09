@@ -54,6 +54,7 @@ class ViewerIntent:
     plot_type:        str             = "Horizontal Cartesian"
     sr_up_convention: str             = "Relative to North"
     sr_track_grp:     Optional[str]   = None
+    rh_z_col:         Optional[str]   = None
     # Slider limits — needed by the main tab for auto-fit logic
     default_lat_min:  float           = 0.0
     default_lat_max:  float           = 0.0
@@ -235,6 +236,55 @@ def _compute_global_domain(data_pack):
     }
 
 
+def _compute_vert_bounds(data_pack):
+    """Pre-compute vertical (height/pressure) slider bounds for every group+column.
+    Stored in data_pack['vert_bounds'] as {group: {col: (zmin_global, zmax_global, is_pres, unit)}}.
+    Called once at file load alongside _compute_global_domain."""
+    bounds = {}
+    for grp, df in data_pack['data'].items():
+        if df is None or df.empty:
+            continue
+        cl = {c.lower(): c for c in df.columns}
+        grp_bounds = {}
+        vert_keys = ['height', 'ght', 'altitude', 'elev', 'pres', 'pressure', 'p']
+        for key in vert_keys:
+            if key not in cl:
+                continue
+            col = cl[key]
+            is_pres = key in ['pres', 'pressure', 'p']
+            raw = df[col].dropna().values
+            if len(raw) == 0:
+                continue
+            # Check units for Pa→hPa conversion
+            unit = decode_metadata(
+                data_pack['var_attrs'].get(grp, {}).get(col, {}).get('units', '')
+            )
+            convert = 'Pa' in unit and 'hPa' not in unit
+            vals = raw / 100.0 if convert else raw.copy()
+            display_unit = 'hPa' if convert else unit
+
+            if is_pres or convert:
+                zmin = float(max(0.0, math.floor(np.nanmin(vals) / 50.0) * 50.0))
+                raw_max = float(np.nanmax(vals))
+                zmax = float(math.ceil(raw_max / 5.0) * 5.0 + 5.0)
+                zmax = max(zmax, zmin + 50.0)
+                step = 5.0
+            else:
+                zmin = 0.0
+                zmax = float(math.ceil(np.nanmax(vals) / 1000.0) * 1000.0)
+                if zmax == 0.0:
+                    zmax = 1000.0
+                step = 10.0
+
+            if zmin >= zmax:
+                zmax = zmin + step
+
+            grp_bounds[col] = (zmin, zmax, is_pres or convert, display_unit, step)
+        if grp_bounds:
+            bounds[grp] = grp_bounds
+    data_pack['vert_bounds'] = bounds
+
+
 # ---------------------------------------------------------------------------
 # Section renderers — each handles one sidebar container
 # ---------------------------------------------------------------------------
@@ -281,6 +331,7 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                             raw_data_pack = load_data_from_h5(uploaded_file.getvalue())
                             _inject_derived_fields(raw_data_pack)
                             _compute_global_domain(raw_data_pack)
+                            _compute_vert_bounds(raw_data_pack)
                             st.session_state[data_pack_key] = raw_data_pack
                             st.session_state[filename_key] = uploaded_file.name
                             
@@ -355,7 +406,7 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
     return st.session_state.get(data_pack_key)
 
 
-def _render_variable_section(data_pack, plotter):
+def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian"):
     """Renders group + variable selector. Returns (sel_group, variable, plot_var, color_scale, h_col, p_col)."""
 
     available_groups = sorted(list(data_pack['data'].keys()))
@@ -370,7 +421,7 @@ def _render_variable_section(data_pack, plotter):
         if 'show_auto_thin_msg' in st.session_state:
             st.session_state.show_auto_thin_msg = False
         for k in ['v_lvl_range', 'v_time_range', 'v_last_coord',
-                  'v_vert_range', 'v_plot_err', 'v_vec_scale']:
+                  'v_vert_range', 'v_plot_err', 'v_vec_scale', '_last_dom_z_col']:
             if k in st.session_state:
                 del st.session_state[k]
 
@@ -405,7 +456,22 @@ def _render_variable_section(data_pack, plotter):
 
         exclude_col = (st.session_state.get('v_vert_coord')
                        if st.session_state.get('v_use_filter') else None)
-        vars_list   = plotter.get_plottable_variables(sel_group, active_z_col=exclude_col)
+
+        # Determine rh_z_col from session state (widget rendered after plot type section)
+        rh_z_col = None
+        if plot_type == "Radial-Height Profile":
+            rh_z_options = [c for c in [h_col, p_col] if c]
+            if rh_z_options:
+                if ('v_rh_z_col' not in st.session_state or
+                        st.session_state.v_rh_z_col not in rh_z_options):
+                    st.session_state.v_rh_z_col = rh_z_options[0]
+                rh_z_col = st.session_state.v_rh_z_col
+
+        vars_list   = plotter.get_plottable_variables(
+            sel_group,
+            active_z_col=exclude_col or rh_z_col,
+            exclude_vectors=True
+        )
 
         variable = plot_var = color_scale = None
 
@@ -471,14 +537,14 @@ def _render_variable_section(data_pack, plotter):
         else:
             st.stop()
 
-    return sel_group, variable, plot_var, color_scale, h_col, p_col, df_sel, cols_lower
+    return sel_group, variable, plot_var, color_scale, h_col, p_col, df_sel, cols_lower, rh_z_col
 
 
-def _render_plot_type_section(data_pack, sel_group, is_3d):
+def _render_plot_type_section(data_pack, sel_group, is_3d, h_col=None, p_col=None, plotter=None):
     """Renders the Plot Type container.
     Returns (plot_type, sr_up_convention, sr_track_grp)."""
 
-    # Determine track availability for SR
+    # Determine track availability for SR / RH
     _sr_grp = None
     if 'track_spline_track' in data_pack['data'] and \
             len(data_pack['data']['track_spline_track']) >= 2:
@@ -491,17 +557,21 @@ def _render_plot_type_section(data_pack, sel_group, is_3d):
                      'TRACK' not in sel_group.upper() and
                      not is_3d)
 
-    _PLOT_TYPES = ["Horizontal Cartesian", "Horizontal Storm-Relative"]
+    _PLOT_TYPES = ["Horizontal Cartesian", "Horizontal Storm-Relative", "Radial-Height Profile"]
 
-    # Auto-reset to Cartesian when SR becomes unavailable
+    # Auto-reset to Cartesian when SR/RH becomes unavailable
     if 'v_plot_type' not in st.session_state:
         st.session_state.v_plot_type = "Horizontal Cartesian"
-    if not _sr_available and st.session_state.v_plot_type == "Horizontal Storm-Relative":
+    if not _sr_available and st.session_state.v_plot_type in (
+            "Horizontal Storm-Relative", "Radial-Height Profile"):
         st.session_state.v_plot_type = "Horizontal Cartesian"
 
     # SR mode requires storm center — force it before the Storm Center widget renders
     if st.session_state.v_plot_type == "Horizontal Storm-Relative":
         st.session_state.v_show_cen = True
+    # RH mode: storm center not relevant — uncheck and leave it off
+    if st.session_state.v_plot_type == "Radial-Height Profile":
+        st.session_state.v_show_cen = False
 
     with st.sidebar.container(border=True):
         st.markdown("### 🧭 Plot Type")
@@ -512,36 +582,60 @@ def _render_plot_type_section(data_pack, sel_group, is_3d):
             key='v_plot_type',
             disabled=False,
             label_visibility="collapsed",
-            help="Storm-Relative requires track_spline_track or track_best_track (≥2 points)."
-                 " Unavailable in 3D mode."
+            help="Storm-Relative and Radial-Height Profile require track_spline_track or "
+                 "track_best_track (≥2 points). Unavailable in 3D mode."
         )
 
-        is_sr = (plot_type == "Horizontal Storm-Relative")
+        is_sr  = (plot_type == "Horizontal Storm-Relative")
+        is_rh  = (plot_type == "Radial-Height Profile")
 
         if not _sr_available and st.session_state.v_plot_type == "Horizontal Cartesian":
             if is_3d:
-                st.caption("ℹ️ Storm-Relative unavailable in 3D mode.")
+                st.caption("ℹ️ Storm-Relative / Radial-Height unavailable in 3D mode.")
             elif 'TRACK' in sel_group.upper():
-                st.caption("ℹ️ Storm-Relative unavailable for track groups.")
+                st.caption("ℹ️ Storm-Relative / Radial-Height unavailable for track groups.")
             elif _sr_grp is None:
-                st.caption("ℹ️ Storm-Relative requires a spline or best track group.")
+                st.caption("ℹ️ Storm-Relative / Radial-Height requires a spline or best track group.")
 
         if 'v_sr_up' not in st.session_state:
             st.session_state.v_sr_up = "Relative to North"
 
-        sr_c1, sr_c2 = st.columns([0.7, 1.3])
-        with sr_c1:
-            sidebar_label("Up:", enabled=is_sr)
-        with sr_c2:
-            sr_up_convention = st.selectbox(
-                "Up direction",
-                ["Relative to North", "Relative to Storm Motion"],
-                key='v_sr_up',
-                disabled=not is_sr,
-                label_visibility="collapsed"
-            )
+        sub_c1, sub_c2 = st.columns([1.1, 1.3])
+        if is_sr:
+            with sub_c1:
+                sidebar_label("Upward Direction Represents:", enabled=True, size='label')
+            with sub_c2:
+                sr_up_convention = st.selectbox(
+                    "Up direction",
+                    ["Relative to North", "Relative to Storm Motion"],
+                    key='v_sr_up',
+                    disabled=False,
+                    label_visibility="collapsed"
+                )
+            rh_z_col = None
+        elif is_rh:
+            rh_z_options = [c for c in [h_col, p_col] if c]
+            if ('v_rh_z_col' not in st.session_state or
+                    st.session_state.get('v_rh_z_col') not in rh_z_options):
+                st.session_state.v_rh_z_col = rh_z_options[0] if rh_z_options else None
+            with sub_c1:
+                sidebar_label("Plot on Z axis:", enabled=bool(rh_z_options), size='label')
+            with sub_c2:
+                if rh_z_options and plotter:
+                    rh_z_col = st.selectbox(
+                        "RH Z axis", rh_z_options, key='v_rh_z_col',
+                        disabled=False, label_visibility="collapsed",
+                        format_func=lambda x: plotter._get_var_display_name(sel_group, x)
+                    )
+                else:
+                    rh_z_col = st.session_state.get('v_rh_z_col')
+            sr_up_convention = st.session_state.get('v_sr_up', "Relative to North")
+        else:
+            # Horizontal Cartesian — hide both sub-controls
+            sr_up_convention = st.session_state.get('v_sr_up', "Relative to North")
+            rh_z_col = None
 
-    return plot_type, sr_up_convention, _sr_grp
+    return plot_type, sr_up_convention, _sr_grp, rh_z_col
 
 
 def _render_plotting_options(data_pack, sel_group, h_col, p_col,
@@ -554,28 +648,34 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col,
     with st.sidebar.container(border=True):
         st.markdown("### ⚙️ Plotting Options")
 
+        is_rh  = (plot_type == "Radial-Height Profile")
+        is_sr  = (plot_type == "Horizontal Storm-Relative")
+
         if 'v_show_cen' not in st.session_state:
             st.session_state.v_show_cen = True
         if 'v_cen_mode' not in st.session_state:
             st.session_state.v_cen_mode = "Display Location Only"
 
+        # RH mode: force storm center off
+        if is_rh:
+            st.session_state.v_show_cen = False
+
         c_cen1, c_cen2 = st.columns([1, 1.5])
         with c_cen1:
             spacer('sm')
-            show_cen = st.checkbox("Storm Center", key='v_show_cen')
+            show_cen = st.checkbox("Storm Center", key='v_show_cen', disabled=is_rh)
         with c_cen2:
             cen_mode = st.selectbox(
                 "Center Mode", 
                 ["Display Location Only", "Display As Motion Vector"], 
                 key='v_cen_mode', 
-                disabled=not show_cen, 
+                disabled=not show_cen or is_rh, 
                 label_visibility="collapsed"
             )
 
         # --- MAP UNDERLAY LOGIC ---
-        is_sr = (plot_type == "Horizontal Storm-Relative")
         is_3d_state = st.session_state.get('v_is_3d', False)
-        disable_map = is_3d_state or is_sr
+        disable_map = is_3d_state or is_sr or is_rh
 
         if disable_map and st.session_state.get('v_show_basemap', False):
             st.session_state.v_show_basemap = False
@@ -590,6 +690,8 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col,
             st.caption("ℹ️ Map underlay is disabled in 3D mode.")
         elif is_sr:
             st.caption("ℹ️ Map underlay is disabled in Storm-Relative mode.")
+        elif is_rh:
+            st.caption("ℹ️ Map underlay is disabled in Radial-Height mode.")
             
         section_divider()
 
@@ -627,17 +729,19 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col,
 
         section_divider()
 
-        # Level filter
+        # Level filter — disabled entirely in RH mode (height is the Y axis)
         z_con       = None
         target_col  = None
         options     = [c for c in [h_col, p_col] if c]
 
+        if is_rh and st.session_state.get('v_use_filter', False):
+            st.session_state.v_use_filter = False
         if not options and st.session_state.get('v_use_filter', False):
             st.session_state.v_use_filter = False
         if 'v_use_filter' not in st.session_state:
             st.session_state.v_use_filter = False
         use_filter = st.checkbox("Filter by Level?", key='v_use_filter',
-                                  disabled=not options)
+                                  disabled=not options or is_rh)
         f_color = "inherit" if use_filter else CLR_MUTED
 
         if options:
@@ -646,9 +750,15 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col,
                 st.session_state.v_vert_coord = options[0]
             with c_c:
                 sidebar_label("Vertical Coord.", enabled=use_filter)
+                def _fmt_vert(x):
+                    meta = data_pack.get('var_attrs', {}).get(sel_group, {}).get(x, {})
+                    long = decode_metadata(meta.get('long_name', '')) or x.replace('_', ' ').title()
+                    units = decode_metadata(meta.get('units', ''))
+                    return f"{long.title()} ({units})" if units else long.title()
                 target_col = st.selectbox(
                     "VCoord", options, key='v_vert_coord',
-                    disabled=not use_filter, label_visibility="collapsed"
+                    disabled=not use_filter, label_visibility="collapsed",
+                    format_func=_fmt_vert
                 )
             v_unit  = decode_metadata(
                 data_pack['var_attrs'].get(sel_group, {})
@@ -727,7 +837,11 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col,
         p_c1, p_c2 = st.columns([1.4, 1])
         with p_c1:
             is_3d_state   = st.session_state.get('v_is_3d', False)
-            proj_disabled = not (plot_track and is_3d_state)
+            if is_rh:
+                # RH: projection is always "Show" when track is checked — no choice needed
+                proj_disabled = True
+            else:
+                proj_disabled = not (plot_track and is_3d_state)
             p_color       = "inherit" if not proj_disabled else CLR_MUTED
             st.markdown(
                 f"<div style='margin-top: 8px; font-size: {FS_BODY}px; font-weight: 500; "
@@ -737,18 +851,26 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col,
         with p_c2:
             if 'v_track_proj' not in st.session_state:
                 st.session_state.v_track_proj = "Bottom Only"
+            if is_rh:
+                # Force to "Show" whenever track is checked; "None" when unchecked
+                st.session_state.v_track_proj = "Show" if plot_track else "None"
+                proj_options = ["Show"] if plot_track else ["None"]
+            else:
+                proj_options = ["None", "Bottom Only", "Sides Only", "Bottom + Sides"]
+                if st.session_state.v_track_proj not in proj_options:
+                    st.session_state.v_track_proj = proj_options[0]
             track_proj = st.selectbox(
                 "Projection",
-                ["None", "Bottom Only", "Sides Only", "Bottom + Sides"],
+                proj_options,
                 key='v_track_proj', disabled=proj_disabled,
                 label_visibility="collapsed"
             )
 
         section_divider()
 
-        # 3D toggle
-        can_do_3d = (h_col is not None or p_col is not None)
-        if not can_do_3d and st.session_state.get('v_is_3d', False):
+        # 3D toggle — disabled in RH mode
+        can_do_3d = (h_col is not None or p_col is not None) and not is_rh
+        if (not can_do_3d or is_rh) and st.session_state.get('v_is_3d', False):
             st.session_state.v_is_3d = False
 
         c3d_1, c3d_2 = st.columns([1.1, 1])
@@ -799,7 +921,8 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col,
                 )
                 marker_sz = 100
             else:
-                if 'v_marker_size' not in st.session_state:
+                if ('v_marker_size' not in st.session_state or
+                        not (10 <= st.session_state.v_marker_size <= 200)):
                     st.session_state.v_marker_size = 100
                 marker_sz = st.slider(
                     "Marker Size", min_value=10, max_value=200, step=10,
@@ -815,15 +938,18 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col,
 
 
 def _render_domain_section(data_pack, sel_group, df_sel, options,
-                            target_col_3d, is_3d,
+                            target_col, target_col_3d, is_3d,
                             default_lat_min, default_lat_max,
                             default_lon_min, default_lon_max,
                             plot_type="Horizontal Cartesian",
-                            sr_track_grp=None, plotter=None):
+                            sr_track_grp=None, plotter=None, rh_z_col=None):
     """Renders domain limit sliders + auto-fit / reset buttons.
     Returns (domain_bounds, convert_dom, vert_range, domain_z_col)."""
 
     is_sr = (plot_type == "Horizontal Storm-Relative")
+    is_rh = (plot_type == "Radial-Height Profile")
+    # Both SR and RH modes use a max-range slider rather than lat/lon sliders
+    use_range_slider = is_sr or is_rh
 
     with st.sidebar.container(border=True):
         st.markdown("### 🗺️ Plot Domain Limits")
@@ -858,8 +984,8 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
             if 'v_vert_range' in st.session_state:
                 del st.session_state['v_vert_range']
 
-        if is_sr:
-            # SR mode: left column = Max Range (km) slider, right column hidden
+        if use_range_slider:
+            # SR / RH mode: Max Range (km) slider instead of lat/lon sliders
             sr_default_max = 500.0
             if plotter is not None and sr_track_grp:
                 try:
@@ -942,64 +1068,86 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
 
         vert_range  = None
         convert_dom = False
-        domain_z_col = target_col_3d
+        # Always track whichever vertical coord the user has selected —
+        # v_vert_coord drives both the level filter and the domain vertical slider.
+        if is_rh and rh_z_col:
+            domain_z_col = rh_z_col
+        else:
+            domain_z_col = st.session_state.get('v_vert_coord') or (target_col if target_col else target_col_3d)
 
         if options and df_sel is not None:
-            v_unit_dom = decode_metadata(
-                data_pack['var_attrs'].get(sel_group, {})
-                .get(domain_z_col, {}).get('units', '')
-            )
-            convert_dom = 'Pa' in v_unit_dom and 'hPa' not in v_unit_dom
-            if convert_dom:
-                v_unit_dom = 'hPa'
+            # Ensure vert_bounds are available (lazy fallback for older sessions)
+            if 'vert_bounds' not in data_pack:
+                _compute_vert_bounds(data_pack)
 
-            vert_vals = df_sel[domain_z_col].dropna().values
-            if len(vert_vals) > 0:
+            grp_vb   = data_pack.get('vert_bounds', {}).get(sel_group, {})
+            col_vb   = grp_vb.get(domain_z_col)  # (zmin, zmax, is_pres, unit, step)
+
+            if col_vb:
+                zmin_global, zmax_global, is_pres, v_unit_dom, slider_step = col_vb
+                convert_dom = is_pres and any(
+                    p in domain_z_col.lower() for p in ['pres', 'pressure', 'p']
+                ) and data_pack['var_attrs'].get(sel_group, {}).get(
+                    domain_z_col, {}).get('units', '').strip() not in ('hPa', '')
+            else:
+                # Fallback: compute inline
+                v_unit_dom = decode_metadata(
+                    data_pack['var_attrs'].get(sel_group, {})
+                    .get(domain_z_col, {}).get('units', ''))
+                convert_dom = 'Pa' in v_unit_dom and 'hPa' not in v_unit_dom
+                if convert_dom:
+                    v_unit_dom = 'hPa'
+                vert_vals = df_sel[domain_z_col].dropna().values
                 if convert_dom:
                     vert_vals = vert_vals / 100.0
-
                 is_pres = convert_dom or any(
-                    p in domain_z_col.lower() for p in ['pres', 'pressure', 'p']
-                )
+                    p in domain_z_col.lower() for p in ['pres', 'pressure', 'p'])
                 if is_pres:
                     zmin_global = float(max(0.0, math.floor(np.nanmin(vert_vals) / 50.0) * 50.0))
-                    zmax_global = float(max(1015.0, math.ceil(np.nanmax(vert_vals) / 50.0) * 50.0))
+                    raw_max = float(np.nanmax(vert_vals))
+                    zmax_global = float(math.ceil(raw_max / 5.0) * 5.0 + 5.0)
+                    zmax_global = max(zmax_global, zmin_global + 50.0)
+                    slider_step = 5.0
                 else:
                     zmin_global = 0.0
                     zmax_global = float(math.ceil(np.nanmax(vert_vals) / 1000.0) * 1000.0)
                     if zmax_global == 0.0:
                         zmax_global = 1000.0
-
+                    slider_step = 10.0
                 if zmin_global >= zmax_global:
-                    zmax_global = zmin_global + 1.0
+                    zmax_global = zmin_global + slider_step
 
-                if 'v_vert_range' not in st.session_state:
-                    st.session_state.v_vert_range = (zmin_global, zmax_global)
-                else:
-                    c_min, c_max = st.session_state.v_vert_range
-                    c_min = max(zmin_global, min(c_min, zmax_global))
-                    c_max = max(zmin_global, min(c_max, zmax_global))
-                    if c_min > c_max:
-                        c_min = c_max
-                    st.session_state.v_vert_range = (c_min, c_max)
+            # Reset slider state when the z column changes
+            if st.session_state.get('_last_dom_z_col') != domain_z_col:
+                st.session_state.v_vert_range       = (zmin_global, zmax_global)
+                st.session_state['_last_dom_z_col'] = domain_z_col
+                st.rerun()
+            elif 'v_vert_range' not in st.session_state:
+                st.session_state.v_vert_range = (zmin_global, zmax_global)
+            else:
+                c_min, c_max = st.session_state.v_vert_range
+                c_min = max(zmin_global, min(c_min, zmax_global))
+                c_max = max(zmin_global, min(c_max, zmax_global))
+                if c_min > c_max:
+                    c_min = c_max
+                st.session_state.v_vert_range = (c_min, c_max)
 
-                v1, v2 = st.columns([1.0, 2.2])
-                with v1:
-                    sidebar_label(f'Vert ({v_unit_dom}):', enabled=is_3d, size='label')
-                with v2:
-                    vert_range_ui = st.slider(
-                        "Vertical Limits",
-                        min_value=zmin_global, max_value=zmax_global,
-                        key='v_vert_range', step=0.01,
-                        disabled=not is_3d, label_visibility="collapsed"
-                    )
+            v1, v2 = st.columns([1.0, 2.2])
+            with v1:
+                sidebar_label(f'Vert ({v_unit_dom}):', enabled=True, size='label')
+            with v2:
+                vert_range_ui = st.slider(
+                    "Vertical Limits",
+                    min_value=zmin_global, max_value=zmax_global,
+                    key='v_vert_range', step=slider_step,
+                    label_visibility="collapsed"
+                )
 
-                if is_3d:
-                    vert_range = vert_range_ui
-                    domain_bounds['z_min']     = vert_range[0]
-                    domain_bounds['z_max']     = vert_range[1]
-                    domain_bounds['z_col']     = domain_z_col
-                    domain_bounds['z_convert'] = convert_dom
+                vert_range = vert_range_ui
+                domain_bounds['z_min']     = vert_range[0]
+                domain_bounds['z_max']     = vert_range[1]
+                domain_bounds['z_col']     = domain_z_col
+                domain_bounds['z_convert'] = convert_dom
 
         b1, b2 = st.columns(2)
 
@@ -1007,7 +1155,7 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
 
         with b1:
             if st.button("🔍 Auto-fit domain", use_container_width=True):
-                if is_sr:
+                if use_range_slider:
                     if plotter is not None and sr_track_grp:
                         try:
                             temp_df = df_sel.copy()
@@ -1144,11 +1292,24 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                                         z_vals_fit = z_vals_fit / 100.0
                                     a_z_min  = float(z_vals_fit.min())
                                     a_z_max  = float(z_vals_fit.max())
-                                    z_span   = max(a_z_max - a_z_min, 1.0)
-                                    buf_z    = z_span * 0.05
-                                    st.session_state._force_z_range = (
-                                        a_z_min - buf_z, a_z_max + buf_z
+                                    is_pres_fit = conv_fit or any(
+                                        p in domain_z_col.lower() for p in ['pres', 'pressure', 'p']
                                     )
+                                    if is_pres_fit:
+                                        # Small fixed pad at surface (high P), proportional at top
+                                        z_span  = max(a_z_max - a_z_min, 1.0)
+                                        buf_top = z_span * 0.05   # top of atmosphere side
+                                        buf_sfc = 5.0              # surface side — just 5 hPa
+                                        st.session_state._force_z_range = (
+                                            max(0.0, a_z_min - buf_top),
+                                            a_z_max + buf_sfc
+                                        )
+                                    else:
+                                        z_span = max(a_z_max - a_z_min, 1.0)
+                                        buf_z  = z_span * 0.05
+                                        st.session_state._force_z_range = (
+                                            a_z_min - buf_z, a_z_max + buf_z
+                                        )
                             st.session_state._force_domain_fit = True
                             st.rerun()
 
@@ -1277,7 +1438,7 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
                         t_vals  = temp_df[t_col] / 100.0 if conv else temp_df[t_col]
                         temp_df = temp_df[(t_vals >= vmin) & (t_vals <= vmax)]
 
-                is_sr_time = (plot_type == "Horizontal Storm-Relative")
+                is_sr_time = (plot_type in ("Horizontal Storm-Relative", "Radial-Height Profile"))
                 cl  = {c.lower(): c for c in temp_df.columns}
                 x_c = next((cl[c] for c in ['lon', 'longitude', 'clon'] if c in cl), None)
                 y_c = next((cl[c] for c in ['lat', 'latitude',  'clat'] if c in cl), None)
@@ -1396,9 +1557,11 @@ def render_viewer_controls(plotter) -> ViewerIntent:
     intent.default_lon_max = _extract_strict_bound(data_pack, 'geospatial_lon_max') or 0.0
 
     # --- Variable selector ---
+    # plot_type is rendered below, but we need it here to exclude h_col in RH mode.
+    # Read from session state (set by the selectbox key 'v_plot_type') so it's available.
+    plot_type = st.session_state.get('v_plot_type', 'Horizontal Cartesian')
     (sel_group, variable, plot_var, color_scale,
-     h_col, p_col, df_sel, cols_lower) = _render_variable_section(data_pack, plotter)
-
+     h_col, p_col, df_sel, cols_lower, rh_z_col) = _render_variable_section(data_pack, plotter, plot_type)
     intent.sel_group   = sel_group
     intent.variable    = variable
     intent.plot_var    = plot_var
@@ -1406,11 +1569,12 @@ def render_viewer_controls(plotter) -> ViewerIntent:
 
     options = [c for c in [h_col, p_col] if c]
 
-    # --- Plot Type (Cartesian / Storm-Relative) ---
+    # --- Plot Type (Cartesian / Storm-Relative / Radial-Height) ---
     # is_3d not yet known here; read from session state for the availability check
     _cur_is_3d = st.session_state.get('v_is_3d', False)
-    plot_type, sr_up_convention, sr_track_grp = _render_plot_type_section(
-        data_pack, sel_group, _cur_is_3d
+    plot_type, sr_up_convention, sr_track_grp, rh_z_col = _render_plot_type_section(
+        data_pack, sel_group, _cur_is_3d,
+        h_col=h_col, p_col=p_col, plotter=plotter
     )
 
     # --- Plotting options (thinning, level, track, 3D, size) ---
@@ -1442,15 +1606,17 @@ def render_viewer_controls(plotter) -> ViewerIntent:
     intent.plot_type         = plot_type
     intent.sr_up_convention  = sr_up_convention
     intent.sr_track_grp      = sr_track_grp
+    intent.rh_z_col          = rh_z_col
 
     # --- Domain limits ---
     (domain_bounds, convert_dom,
      vert_range, domain_z_col) = _render_domain_section(
          data_pack, sel_group, df_sel, options,
-         target_col_3d, is_3d,
+         target_col, target_col_3d, is_3d,
          intent.default_lat_min, intent.default_lat_max,
          intent.default_lon_min, intent.default_lon_max,
-         plot_type=plot_type, sr_track_grp=sr_track_grp, plotter=plotter
+         plot_type=plot_type, sr_track_grp=sr_track_grp, plotter=plotter,
+         rh_z_col=rh_z_col
      )
     intent.domain_bounds = domain_bounds
 
