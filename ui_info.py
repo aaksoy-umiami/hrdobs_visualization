@@ -68,7 +68,7 @@ def render_info_tab():
             label_usage = "How To Use This App" + (" →" if is_usage else "")
             if st.button(label_usage,
                          type='primary' if is_usage else 'secondary',
-                         use_container_width=True,
+                         width="stretch",
                          key="btn_info_usage"):
                 st.session_state.info_sub_tab = 'usage'
                 st.rerun()
@@ -76,7 +76,7 @@ def render_info_tab():
             label_about = "About" + (" →" if is_about else "")
             if st.button(label_about,
                          type='primary' if is_about else 'secondary',
-                         use_container_width=True,
+                         width="stretch",
                          key="btn_info_about"):
                 st.session_state.info_sub_tab = 'about'
                 st.rerun()
