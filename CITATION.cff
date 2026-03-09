@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as follows."
 title: "HRD Obs Visualizer"
 repository-code: "https://github.com/hailcloud-um/hrdobs_visualization"
-url: "https://[YOUR-APP-URL].streamlit.app" 
+url: "https://hrdobs-visualization.streamlit.app" 
 keywords:
   - "meteorology"
   - "hurricane-research"
