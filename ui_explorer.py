@@ -113,7 +113,7 @@ def render_explorer_tab():
         with sc3:
             spacer('lg')
             st.button("🔄 Reset Sort", key="btn_reset_sort", type="secondary",
-                      use_container_width=True, on_click=reset_table_sort)
+                      width="stretch", on_click=reset_table_sort)
 
         sort_col_internal = sort_options.get(
             st.session_state.get('ui_sort_col', 'Year'), 'Year'
@@ -137,7 +137,7 @@ def render_explorer_tab():
                 label="⬇️ Download Results as CSV",
                 data=csv_data,
                 file_name=f"hrdobs_filtered_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime='text/csv', type="secondary", use_container_width=True,
+                mime='text/csv', type="secondary", width="stretch",
             )
 
         # Table button and label styles are defined globally in ui_layout.py
