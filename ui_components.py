@@ -136,12 +136,12 @@ def multiselect_with_controls(label: str, options: list, key: str):
     cb1.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
     
     cb1.button(
-        "Select All", type="secondary", use_container_width=True,
+        "Select All", type="secondary", width="stretch",
         on_click=lambda k=key, a=options: st.session_state.update({k: list(a)}),
         key=f"sa_{key}"
     )
     cb2.button(
-        "Deselect All", type="secondary", use_container_width=True,
+        "Deselect All", type="secondary", width="stretch",
         on_click=lambda k=key: st.session_state.update({k: []}),
         key=f"da_{key}"
     )
