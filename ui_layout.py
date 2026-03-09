@@ -94,7 +94,7 @@ PLOT_TITLE_Y = 0.96
 # ---------------------------------------------------------------------------
 
 def setup_page():
-    """Initialise page config and inject all global CSS rules."""
+    """Initialize page config and inject all global CSS rules."""
     st.set_page_config(
         page_title="HRDOBS Dataset Explorer & Visualizer | Altug Aksoy",
         page_icon="🌀",
@@ -102,7 +102,7 @@ def setup_page():
         initial_sidebar_state="expanded",
         menu_items={
             'Report a bug': "mailto:aaksoy@miami.edu",
-            'Get help': "https://TBD",
+            'Get help': "https://github.com/hailcloud-um/hrdobs_visualization",
             'About': """
             ### HRDOBS Dataset Explorer & Visualizer
             **Interactive tool for exploring AI-Ready HDF5 hurricane reconnaissance observations**
