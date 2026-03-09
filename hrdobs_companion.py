@@ -55,17 +55,17 @@ if 'selected_tab_index' not in st.session_state:
 tab_col_space1, tab_col1, tab_col2, tab_col3, tab_col4, tab_col_space2 = st.columns([0.05, 1, 1, 1, 0.6, 0.05])
 
 with tab_col1:
-    if st.button("🌍 Dataset Explorer", type="primary" if st.session_state.selected_tab_index == 0 else "secondary", use_container_width=True):
+    if st.button("🌍 Dataset Explorer", type="primary" if st.session_state.selected_tab_index == 0 else "secondary", width="stretch"):
         st.session_state.selected_tab_index = 0
         st.rerun()
 
 with tab_col2:
-    if st.button("📊 Single File Plotter", type="primary" if st.session_state.selected_tab_index == 1 else "secondary", use_container_width=True):
+    if st.button("📊 Single File Plotter", type="primary" if st.session_state.selected_tab_index == 1 else "secondary", width="stretch"):
         st.session_state.selected_tab_index = 1
         st.rerun()
 
 with tab_col3:
-    if st.button("📈 Single File Statistical Analysis", type="primary" if st.session_state.selected_tab_index == 2 else "secondary", use_container_width=True):
+    if st.button("📈 Single File Statistical Analysis", type="primary" if st.session_state.selected_tab_index == 2 else "secondary", width="stretch"):
         st.session_state.selected_tab_index = 2
         st.rerun()
 
