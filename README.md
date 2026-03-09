@@ -2,7 +2,7 @@
 
 This repository contains the source code for the **HRDOBS Visualizer**, an interactive web application designed to explore, view, and analyze the HRDOBS dataset from the Hurricane Research Division (HRD). 
 
-### 🌐 <a href="https://[YOUR-APP-URL].streamlit.app" target="_blank">Launch the Live App on Streamlit</a>
+### 🌐 <a href="https://hrdobs-visualization.streamlit.app" target="_blank">Launch the Live App on Streamlit</a>
 
 ## Overview
 Built to streamline the visualization of complex atmospheric data, this companion app provides an intuitive interface for querying inventory databases and rendering meteorological observations on interactive maps. It is structured modularly to support data exploration and detailed file viewing for the contents of HRDOBS dataset hdf5 files.
