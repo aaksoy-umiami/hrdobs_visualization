@@ -4,3 +4,4 @@ matplotlib
 scipy
 pandas
 streamlit-js-eval
+h5py
