@@ -1378,6 +1378,11 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
         is_track_grp = 'TRACK' in sel_group.upper()
         default_range = (s_min_dt, s_max_dt)
 
+        # 1. MOVE THESE THREE LINES UP HERE
+        _t_bounds = st.session_state.get('_slider_time_bounds')
+        _t_slider_min = _t_bounds[0] if _t_bounds else s_min_dt
+        _t_slider_max = _t_bounds[1] if _t_bounds else s_max_dt
+
         # Reset time range when group type changes between track and non-track
         last_grp_was_track = st.session_state.get('_time_last_was_track', None)
         if last_grp_was_track is not None and last_grp_was_track != is_track_grp:
@@ -1390,26 +1395,27 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
             forced_max = max(s_min_dt, min(forced_max, s_max_dt))
             if forced_min > forced_max:
                 forced_min = forced_max
-            # Delete widget key so slider reinitializes with new bounds
             st.session_state.pop('v_time_range', None)
             st.session_state._pending_time_range = (forced_min, forced_max)
         elif 'v_time_range' not in st.session_state:
             st.session_state.v_time_range = default_range
         else:
             t_c_min, t_c_max = st.session_state.v_time_range
-            t_c_min = max(s_min_dt, min(t_c_min, s_max_dt))
-            t_c_max = max(s_min_dt, min(t_c_max, s_max_dt))
+            
+            # 2. FIX CLAMPING: Use _t_slider_min / _t_slider_max instead of s_min_dt / s_max_dt
+            t_c_min = max(_t_slider_min, min(t_c_min, _t_slider_max))
+            t_c_max = max(_t_slider_min, min(t_c_max, _t_slider_max))
+            
             if t_c_min > t_c_max:
                 t_c_min = t_c_max
             st.session_state.v_time_range = (t_c_min, t_c_max)
 
         sidebar_label('Time Range (UTC):', size='label')
         _pending_time = st.session_state.pop('_pending_time_range', None)
-        _t_bounds = st.session_state.get('_slider_time_bounds')
-        _t_slider_min = _t_bounds[0] if _t_bounds else s_min_dt
-        _t_slider_max = _t_bounds[1] if _t_bounds else s_max_dt
+        
         if 'v_time_range' not in st.session_state:
             st.session_state.v_time_range = _pending_time if _pending_time else default_range
+            
         time_range = st.slider(
             "Time Limits", min_value=_t_slider_min, max_value=_t_slider_max,
             key='v_time_range', format="HH:mm:ss",
