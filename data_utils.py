@@ -55,7 +55,22 @@ def load_inventory_db(db_path):
     if 'MSLP_hPa' in df.columns:
         df.loc[df['MSLP_hPa'] > 2000, 'MSLP_hPa'] /= 100.0
             
+    # Standardize the Category column
     df['TC_Category'] = df['TC_Category'].fillna("Unknown").astype(str).str.replace(r'[\[\]\'"]', '', regex=True)
+
+    # Breakdown "HU" into H1-H5 categories based on intensity (Saffir-Simpson scale)
+    def refine_hu_category(row):
+        if row['TC_Category'] == 'HU' and pd.notna(row['Intensity_ms']):
+            v_kt = row['Intensity_ms'] * 1.94384  # Convert m/s to knots
+            if v_kt >= 137: return 'H5'
+            if v_kt >= 113: return 'H4'
+            if v_kt >= 96:  return 'H3'
+            if v_kt >= 83:  return 'H2'
+            if v_kt >= 64:  return 'H1'
+        return row['TC_Category']
+
+    df['TC_Category'] = df.apply(refine_hu_category, axis=1)
+
     df['Basin'] = df['Filename'].apply(get_basin_from_filename)
     df['Constructed_File_Name'] = df['Filename']
     
@@ -164,7 +179,6 @@ def load_data_from_h5(file_bytes):
         except Exception:
             pass
 
-        # If we reach here, no valid center or bounds were found.
         return None
 
     with tempfile.NamedTemporaryFile(delete=False, suffix='.hdf5') as tmp_file:
@@ -211,14 +225,12 @@ def load_data_from_h5(file_bytes):
                 if c.lower() in ['lon', 'longitude', 'ilon', 'clon']: rename_map[c] = 'lon'
             if rename_map: df.rename(columns=rename_map, inplace=True)
 
-            # ---> NEW: Apply Global Unit Conversions <---
             from config import UNIT_CONVERSIONS
             for dset in df.columns:
                 if dset in group_var_attrs:
                     u_raw = group_var_attrs[dset].get('units', '')
-                    u_str = _safe_val(u_raw).strip().lower() # Convert to lowercase for safe matching
+                    u_str = _safe_val(u_raw).strip().lower()
                     
-                    # Check against lowercase keys in the config
                     for target_unit, rule in UNIT_CONVERSIONS.items():
                         if u_str == target_unit.lower():
                             df[dset] = df[dset] * rule['multiplier']
@@ -244,3 +256,4 @@ def load_data_from_h5(file_bytes):
         metadata['bounds'] = [clon-3.0, clon+3.0, clat-3.0, clat+3.0]
         
     return {'data': data_dict, 'track': track_df, 'meta': metadata, 'var_attrs': var_attrs}
+    
