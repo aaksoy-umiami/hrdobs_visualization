@@ -312,7 +312,7 @@ def render_header():
             HRDOBS Dataset Explorer & Visualizer
         </h3>
         <p style='font-size: {FS_SUBTITLE}px; color: {CLR_SUBTLE}; margin: 0;'>
-            Search, filter, map, and analyze AI-Ready tropical cyclone observations
+            Search, filter, map, and analyze AI-ready tropical cyclone observations
         </p>
     </div>
     <hr style='margin-top: 5px; margin-bottom: 60px;'>
