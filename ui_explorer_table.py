@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 
+"""
+ui_explorer_table.py
+----------
+Formats and renders the filtered inventory results as a styled HTML multi-index table with group-separated columns and hover tooltips on storm names.
+
+"""
+
 import pandas as pd
 import streamlit as st
 from config import EXPECTED_GROUPS
