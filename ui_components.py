@@ -5,7 +5,7 @@ ui_components.py
 Reusable Streamlit widget helpers.
 
 Every function here encapsulates a recurring visual pattern so that call
-sites stay concise and the visual behaviour is defined in exactly one place.
+sites stay concise and the visual behavior is defined in exactly one place.
 All style values are imported from ui_layout rather than hardcoded, so
 changes to the design tokens automatically propagate here.
 
@@ -19,7 +19,7 @@ spacer(size)
 
 sidebar_label(text, enabled, size)
     Inline HTML label rendered above or beside a Streamlit widget when the
-    native label would be hidden.  Supports enabled/disabled colour states.
+    native label would be hidden.  Supports enabled/disabled color states.
 
 multiselect_with_controls(label, options, key)
     st.multiselect with Select All / Deselect All buttons underneath.
@@ -83,7 +83,7 @@ def sidebar_label(text: str, enabled: bool = True, size: str = 'body'):
     Parameters
     ----------
     text    : Label text (plain string — no HTML).
-    enabled : When False, renders in the muted colour to signal a disabled state.
+    enabled : When False, renders in the muted color to signal a disabled state.
     size    : 'body' (13 px, font-weight 500) | 'label' (16 px, normal weight)
     """
     color = "inherit" if enabled else CLR_MUTED
@@ -127,12 +127,10 @@ def multiselect_with_controls(label: str, options: list, key: str):
 
     st.multiselect(label, options, key=key)
 
-    # ---> NEW: Inject an invisible marker to target these specific buttons with our alternate CSS
     st.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
 
     cb1, cb2 = st.columns(2)
     
-    # ---> NEW: Inject the invisible marker INSIDE the column block
     cb1.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
     
     cb1.button(
@@ -145,3 +143,4 @@ def multiselect_with_controls(label: str, options: list, key: str):
         on_click=lambda k=key: st.session_state.update({k: []}),
         key=f"da_{key}"
     )
+    
