@@ -145,10 +145,10 @@ Scientist, *CIMAS/Rosenstiel School, University of Miami* & *Hurricane Research 
         st.markdown("#### 💻 Dataset & Source Code")
         st.markdown("""
         The HRDOBS dataset and the source code for this application will be made
-        publicly available upon publication of the companion paper.
+        publicly available along with the publication of the companion paper.
 
         For early access or collaboration inquiries, please reach out directly via
-        the contact information above.
+        the contact information provided.
         """)
 
     st.markdown("---")
