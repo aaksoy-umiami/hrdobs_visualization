@@ -16,6 +16,7 @@ from plotter import StormPlotter
 
 @dataclass
 class AnalysisIntent:
+    """Data object containing the user's selections from the analysis sidebar."""
     data_pack: Optional[Dict] = None
     analysis_type: str = "Histogram Analysis (1D)"
     sel_group: Optional[str] = None
@@ -29,8 +30,8 @@ class AnalysisIntent:
     scatter_trendline: bool = False
     scatter_color_var: Optional[str] = None
     scatter_marker_size: int = 100
-    log_var: bool = False        # log10 transform on primary variable
-    log_coord_var: bool = False  # log10 transform on secondary/coord variable
+    log_var: bool = False
+    log_coord_var: bool = False
 
 _ANALYSIS_STATE_KEYS = [
     'a_sel_group', 'a_variable', 'a_coord_var', 'a_analysis_type', 
@@ -41,7 +42,11 @@ _ANALYSIS_STATE_KEYS = [
 ]
 
 def _render_analysis_variable_section(data_pack, plotter, analysis_type):
-    """A streamlined version of the variable selector specifically for 1D/2D analysis."""
+    """
+    Renders a streamlined variable selector specifically tailored for 1D and 2D analysis.
+    Returns the selected group, primary variable, coordinate variable, and an ordered 
+    list of valid variables for scatter plots.
+    """
     available_groups = sorted(list(data_pack['data'].keys()))
     
     if ('a_sel_group' not in st.session_state or
@@ -124,6 +129,10 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
 
 
 def render_analysis_controls() -> AnalysisIntent:
+    """
+    Renders all sidebar sections for the Statistical Analysis tab and returns 
+    an AnalysisIntent object containing the user's selections.
+    """
     intent = AnalysisIntent()
     
     if 'analysis_state' not in st.session_state:
@@ -140,7 +149,6 @@ def render_analysis_controls() -> AnalysisIntent:
     if data_pack is None:
         return intent
 
-    # Build plotter here so it's always consistent with the resolved data_pack
     plotter = StormPlotter(
         data_pack['data'], data_pack['track'],
         data_pack['meta'], data_pack['var_attrs']
@@ -170,9 +178,6 @@ def render_analysis_controls() -> AnalysisIntent:
         is_2d = (intent.analysis_type == "Histogram Analysis (2D)")
         is_scatter = (intent.analysis_type == "Scatter Analysis")
 
-        # -------------------------------------------------------------
-        # HISTOGRAM CONTROLS
-        # -------------------------------------------------------------
         st.markdown("#### Histogram Controls")
 
         c1, c2, c3 = st.columns([1.4, 1.0, 0.8])
@@ -203,7 +208,6 @@ def render_analysis_controls() -> AnalysisIntent:
                 if 'a_bin_manual_y' not in st.session_state: st.session_state.a_bin_manual_y = DEFAULT_HIST_BINS
                 intent.hist_bins_y = st.number_input("Bins Y", min_value=1, max_value=1000, step=1, key='a_bin_manual_y', label_visibility="collapsed", disabled=not is_2d)
 
-        # ---> NEW: Normalization Control
         c7, c8 = st.columns([1.4, 1.8])
         with c7:
             sidebar_label("Normalization:", size='label', enabled=is_hist)
@@ -221,7 +225,6 @@ def render_analysis_controls() -> AnalysisIntent:
                 key='a_hist_norm', label_visibility="collapsed", disabled=not is_hist
             )
             intent.normalization = norm_val if is_hist else "None"
-        # <---
                 
         if 'a_reverse_axes' not in st.session_state: st.session_state.a_reverse_axes = False
         st.checkbox("Reverse X and Y axes", key="a_reverse_axes")
@@ -233,9 +236,6 @@ def render_analysis_controls() -> AnalysisIntent:
         st.checkbox("Render as line plot", key="a_render_as_line", disabled=not is_1d)
         intent.render_as_line = st.session_state.a_render_as_line if is_1d else False
                 
-        # -------------------------------------------------------------
-        # SCATTER CONTROLS
-        # -------------------------------------------------------------
         section_divider()
         st.markdown("#### Scatter Controls")
         
@@ -272,9 +272,9 @@ def render_analysis_controls() -> AnalysisIntent:
     intent.log_var       = st.session_state.get('a_log_var', False)
     intent.log_coord_var = st.session_state.get('a_log_coord_var', False)
 
-
     for k in list(st.session_state.keys()):
         if k.startswith('a_'):
             st.session_state.analysis_state[k] = st.session_state[k]
 
     return intent
+    

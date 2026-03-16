@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+"""
+config.py
+----------
+Global configuration parameters shared by all other functions.
+
+"""
 
 EXPECTED_GROUPS = [
     "dropsonde_ghawk", "dropsonde_noaa42", "dropsonde_noaa43", "dropsonde_noaa49", "dropsonde_usaf",

@@ -11,7 +11,9 @@ import streamlit as st
 from config import EXPECTED_GROUPS
 
 def decode_metadata(val):
-    """Utility to clean up byte strings, null-padded strings, or arrays from HDF5 metadata."""
+    """
+    Cleans up byte strings, null-padded strings, or arrays from HDF5 metadata.
+    """
     if isinstance(val, (np.ndarray, list)) and len(val) > 0:
         val = val[0]
     if isinstance(val, (bytes, np.bytes_, bytearray)):
@@ -20,7 +22,8 @@ def decode_metadata(val):
         except:
             val = str(val)
     result = str(val).strip()
-    # Remove null padding, then strip any remaining b'...' wrapper artifacts
+    
+    # Remove null padding and strip any remaining b'...' wrapper artifacts
     result = result.rstrip('\x00').strip()
     if result.startswith("b'") and result.endswith("'"):
         result = result[2:-1]
@@ -29,7 +32,9 @@ def decode_metadata(val):
     return result
 
 def get_basin_from_filename(filename):
-    """Extracts basin code dynamically from filename prefixes."""
+    """
+    Extracts the basin code dynamically from the filename prefix.
+    """
     if not isinstance(filename, str): return "Unknown"
     prefix = filename.split('.')[0]
     if not prefix: return "Unknown"
@@ -41,7 +46,9 @@ def get_basin_from_filename(filename):
 
 @st.cache_data
 def load_inventory_db(db_path):
-    """Loads and standardizes the global dataset CSV inventory."""
+    """
+    Loads and standardizes the global dataset CSV inventory.
+    """
     if not os.path.exists(db_path):
         return None
         
@@ -78,6 +85,10 @@ def load_inventory_db(db_path):
 
 @st.cache_data
 def load_data_from_h5(file_bytes):
+    """
+    Loads HDF5 file contents from memory, parses datasets, attributes, 
+    and metadata, and returns a standardized data package.
+    """
     def _safe_val(val):
         try:
             if hasattr(val, '__len__') and not isinstance(val, (str, bytes)):
@@ -98,7 +109,7 @@ def load_data_from_h5(file_bytes):
         if 'center_from_tc_vitals' in attrs:
             raw_val = attrs['center_from_tc_vitals']
             
-            # 1. If it's literally a numeric array/list (not a string)
+            # Check if the value is a numeric array or list rather than a string
             if hasattr(raw_val, '__iter__') and not isinstance(raw_val, (str, bytes)):
                 try:
                     return float(raw_val[0]), float(raw_val[1])
@@ -107,7 +118,7 @@ def load_data_from_h5(file_bytes):
             
             val_str = _safe_val(raw_val).upper()
             
-            # 2. Try to parse as a stringified numeric vector/list: "[20.5, -60.2]" or "20.5, -60.2"
+            # Attempt to parse as a stringified numeric vector or list (e.g., "[20.5, -60.2]")
             import re
             m = re.search(r'\[?\s*([-+]?\d*\.?\d+)[\s,]+([-+]?\d*\.?\d+)\s*\]?', val_str)
             if m:
@@ -117,7 +128,7 @@ def load_data_from_h5(file_bytes):
                 if -90 <= lat_val <= 90 and -180 <= lon_val <= 180:
                     return lat_val, lon_val
 
-            # 3. Legacy string parsing fallback (e.g., "15.0N 75.5W")
+            # Fallback for legacy string coordinate formats (e.g., "15.0N 75.5W")
             coords = []
             used = set()
             for m in re.finditer(
@@ -127,9 +138,9 @@ def load_data_from_h5(file_bytes):
                 if m.start() in used:
                     continue
                 used.add(m.start())
-                if m.group(1):          # number-then-letter: 15.0N
+                if m.group(1):          
                     coords.append((float(m.group(1)), m.group(2)))
-                else:                   # letter-then-number: N15.0
+                else:                   
                     coords.append((float(m.group(4)), m.group(3)))
             if len(coords) >= 2:
                 lat_val = coords[0][0] * (-1 if coords[0][1] == 'S' else 1)
@@ -138,7 +149,7 @@ def load_data_from_h5(file_bytes):
                 if -90 <= lat_val <= 90 and -180 <= lon_val <= 180:
                     return lat_val, lon_val
                 
-        # 4. EXPLICIT FALLBACK: Average of geospatial bounding box
+        # Fallback to computing the average of the geospatial bounding box
         try:
             attr_map = {k.lower(): k for k in attrs.keys()}
             
@@ -164,7 +175,7 @@ def load_data_from_h5(file_bytes):
         except Exception:
             pass
 
-        # If we reach here, no valid center or bounds were found.
+        # Return None if no valid center or bounds were found
         return None
 
     with tempfile.NamedTemporaryFile(delete=False, suffix='.hdf5') as tmp_file:
@@ -211,14 +222,14 @@ def load_data_from_h5(file_bytes):
                 if c.lower() in ['lon', 'longitude', 'ilon', 'clon']: rename_map[c] = 'lon'
             if rename_map: df.rename(columns=rename_map, inplace=True)
 
-            # ---> NEW: Apply Global Unit Conversions <---
+            # Apply global unit conversions
             from config import UNIT_CONVERSIONS
             for dset in df.columns:
                 if dset in group_var_attrs:
                     u_raw = group_var_attrs[dset].get('units', '')
-                    u_str = _safe_val(u_raw).strip().lower() # Convert to lowercase for safe matching
+                    u_str = _safe_val(u_raw).strip().lower()
                     
-                    # Check against lowercase keys in the config
+                    # Match against lowercase keys in the configuration
                     for target_unit, rule in UNIT_CONVERSIONS.items():
                         if u_str == target_unit.lower():
                             df[dset] = df[dset] * rule['multiplier']
@@ -244,3 +255,4 @@ def load_data_from_h5(file_bytes):
         metadata['bounds'] = [clon-3.0, clon+3.0, clat-3.0, clat+3.0]
         
     return {'data': data_dict, 'track': track_df, 'meta': metadata, 'var_attrs': var_attrs}
+    
