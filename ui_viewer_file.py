@@ -37,7 +37,6 @@ def _inject_derived_fields(raw_data_pack):
         if grp not in raw_data_pack['var_attrs']:
             raw_data_pack['var_attrs'][grp] = {}
 
-        # SFMR: inject a nominal 10 m observation height
         if 'sfmr' in grp.lower():
             df_grp['altitude'] = 10.0
             raw_data_pack['var_attrs'][grp]['altitude'] = {
@@ -64,14 +63,12 @@ def _inject_derived_fields(raw_data_pack):
         u_err_c      = get_err_col('u')
         v_err_c      = get_err_col('v')
 
-        # Horizontal wind speed
         wspd_hz = np.sqrt(u_vals**2 + v_vals**2)
         df_grp['wspd_hz_comp'] = wspd_hz
         raw_data_pack['var_attrs'][grp]['wspd_hz_comp'] = {
             'units': u_units, 'long_name': 'Horizontal Wind Speed (Computed)'
         }
 
-        # Horizontal wind speed error
         if u_err_c and v_err_c:
             u_err_vals = df_grp[u_err_c]
             v_err_vals = df_grp[v_err_c]
@@ -92,7 +89,6 @@ def _inject_derived_fields(raw_data_pack):
                 'units': u_units, 'long_name': hz_err_name
             }
 
-        # 2-D wind vector placeholder
         df_grp['wind_vec_hz'] = wspd_hz
         raw_data_pack['var_attrs'][grp]['wind_vec_hz'] = {
             'units': u_units, 'long_name': 'Horizontal Wind Vectors'
@@ -104,14 +100,12 @@ def _inject_derived_fields(raw_data_pack):
         w_c    = cols_lower['w']
         w_vals = df_grp[w_c]
 
-        # 3-D wind speed
         wspd_3d = np.sqrt(u_vals**2 + v_vals**2 + w_vals**2)
         df_grp['wspd_3d_comp'] = wspd_3d
         raw_data_pack['var_attrs'][grp]['wspd_3d_comp'] = {
             'units': u_units, 'long_name': '3D Wind Speed (Computed)'
         }
 
-        # 3-D wind speed error
         w_err_c = get_err_col('w')
         if u_err_c and v_err_c and w_err_c:
             u_err_vals = df_grp[u_err_c]
@@ -136,7 +130,6 @@ def _inject_derived_fields(raw_data_pack):
                 'units': u_units, 'long_name': err_3d_name
             }
 
-        # 3-D wind vector placeholder
         df_grp['wind_vec_3d'] = wspd_3d
         raw_data_pack['var_attrs'][grp]['wind_vec_3d'] = {
             'units': u_units, 'long_name': '3D Wind Vectors'
@@ -144,9 +137,11 @@ def _inject_derived_fields(raw_data_pack):
 
 
 def _compute_global_domain(data_pack):
-    """Scan all groups for lat/lon and store a tight square bounding box
+    """
+    Scans all groups for lat/lon and stores a tight square bounding box
     in data_pack['global_domain']. Called at file load; also safe to call
-    lazily if missing."""
+    lazily if missing.
+    """
     all_lats, all_lons = [], []
     for grp, df in data_pack['data'].items():
         if df is None or df.empty:
@@ -188,14 +183,14 @@ def _compute_global_domain(data_pack):
 
 
 def render_file_upload_section(data_pack_key, filename_key, state_keys, state_dict_key):
-    """Renders the file upload container and returns the (possibly new) data_pack."""
+    """
+    Renders the file upload container and returns the resolved data_pack.
+    """
     data_pack = st.session_state.get(data_pack_key)
     
-    # Check cross-tab inheritance
     other_data_key = 'data_pack_analysis' if data_pack_key == 'data_pack' else 'data_pack'
     other_file_key = 'last_uploaded_filename_analysis' if filename_key == 'last_uploaded_filename' else 'last_uploaded_filename'
     
-    # If this tab is empty, the other tab has a file, AND we haven't explicitly cleared this tab
     if data_pack is None and st.session_state.get(other_data_key) is not None and not st.session_state.get(f"cleared_{data_pack_key}"):
         st.session_state[data_pack_key] = st.session_state[other_data_key]
         st.session_state[filename_key] = st.session_state[other_file_key]
@@ -221,7 +216,6 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                             st.session_state[data_pack_key] = raw_data_pack
                             st.session_state[filename_key] = uploaded_file.name
                             
-                            # Clear the "cleared" flags so the other tab can inherit this new file
                             st.session_state.pop('cleared_data_pack', None)
                             st.session_state.pop('cleared_data_pack_analysis', None)
                             
@@ -240,10 +234,9 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                 if filename_key in st.session_state:
                     del st.session_state[filename_key]
                 st.session_state[state_dict_key] = {}
-                st.session_state[f"cleared_{data_pack_key}"] = True # Prevent auto-inheriting immediately
+                st.session_state[f"cleared_{data_pack_key}"] = True 
                 st.rerun()
 
-        # Inventory expanders (only when a file is loaded)
         current_pack = st.session_state.get(data_pack_key)
         if current_pack is not None:
             with st.expander("🗂️ View Current File Inventory", expanded=False):
@@ -290,3 +283,4 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                 st.markdown(meta_html, unsafe_allow_html=True)
 
     return st.session_state.get(data_pack_key)
+    
