@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+hrdobs_companion.py
+--------------
+App entry point: configures the page, detects viewport width, and routes between the four main tabs.
+"""
 
 import streamlit as st
 from ui_layout import setup_page, render_header, render_footer
