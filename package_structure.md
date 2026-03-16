@@ -22,6 +22,15 @@ hrdobs_companion.py                  ← App entry point (tab routing, page setu
 
 
 ---------------------------------------------------------------------
+## Architecture Philosophy & Design Pattern
+
+The application strictly separates **UI state/collection** from **rendering logic** using a unidirectional data flow. 
+
+1. **Sidebar Modules (`_controls.py`):** These scripts handle all `st.sidebar` widgets and session state management. They collect user inputs and return an `Intent` dataclass (e.g., `ViewerIntent`, `AnalysisIntent`, `ExplorerIntent`).
+2. **Main Tab Modules (`ui_*.py`):** These scripts receive the `Intent` dataclass and coordinate the main page layout. 
+3. **Rendering (`plotter.py` / `ui_*_table.py`):** These modules contain pure functions/classes that take the clean data and parameters from the `Intent` to generate visual outputs (Plotly figures or HTML tables) without reading Streamlit session state directly.
+
+---------------------------------------------------------------------
 ## Shared Utilities
 
 plotter.py        ← All Plotly figure generation (StormPlotter class)
@@ -40,8 +49,11 @@ data_utils.py     ← HDF5 file loading, CSV inventory loading, metadata decodin
 basemap.py        ← Coastline/country border traces for Cartesian map underlay
                      • get_basemap_traces()  — Returns go.Scatter line traces from TopoJSON
 
-config.py         ← App-wide constants (expected groups, metadata fields, variable
-                     display config, unit conversion rules, UI defaults)
+config.py         ← App-wide Central Registry
+                     • This is the single source of truth for variables. If adding a new 
+                       dataset variable or changing a color scale, update this file.
+                     • Contains EXPECTED_GROUPS, EXPECTED_META, UNIT_CONVERSIONS, 
+                       and GLOBAL_VAR_CONFIG (color scales, limits, coordinate flags).
 
 ui_components.py  ← Reusable Streamlit widget helpers
                      • section_divider()
@@ -51,7 +63,7 @@ ui_components.py  ← Reusable Streamlit widget helpers
 
 
 ---------------------------------------------------------------------
-## Data Flow
+## Data Flow & Expected Schema
 
 Uploaded .h5 file
         │
@@ -71,7 +83,14 @@ ui_viewer_file._compute_global_domain()
         │   a tight bounding box for domain sliders.
         │
         ▼
-data_pack  ←  {data, track, meta, var_attrs, global_domain, vert_bounds}
+data_pack  ←  The core memory object shared across visualization tabs.
+        │     Schema:
+        │      • data: dict of pandas DataFrames (the observations).
+        │      • track: DataFrame containing the storm track.
+        │      • meta: Global metadata (storm_center tuple, bounds, info dict).
+        │      • var_attrs: Dict mapping variables to their metadata (units, long_name).
+        │      • global_domain: Dict of global lat/lon bounds.
+        │      • vert_bounds: Dict of pre-computed vertical limits per group.
         │
         ├──▶ ui_viewer_controls.render_viewer_controls()
         │           Returns ViewerIntent (all plot parameters)
@@ -116,6 +135,12 @@ ui_explorer_table.display_explorer_table()
         ▼
 st.markdown() + st.download_button()
 
+
+---------------------------------------------------------------------
+## CSS & Theming Strategy
+
+This application does not rely on standard Streamlit theming configurations (e.g., `.streamlit/config.toml`) for component styling. Instead, native widgets are heavily customized via injected CSS in **`ui_layout.py`**. 
+If you need to change font sizes, button colors, or spacing, adjust the "Design Tokens" defined at the top of `ui_layout.py`.
 
 ---------------------------------------------------------------------
 ## Session State Key Prefixes
