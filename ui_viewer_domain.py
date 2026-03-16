@@ -4,15 +4,16 @@ ui_viewer_domain.py
 -------------------
 Domain and time limit sidebar sections for the File Data Viewer tab.
 
-Public API
-----------
+Public functions
+----------------
 _render_domain_section(...)
-    Renders lat/lon/vertical domain sliders with auto-fit and reset buttons.
-    Returns (domain_bounds, convert_dom, vert_range, domain_z_col).
+    Renders lat/lon or storm-relative range sliders, a vertical range slider,
+    and Auto-Fit / Reset buttons. Returns (domain_bounds, convert_dom,
+    vert_range, domain_z_col).
 
 _render_time_section(...)
-    Renders the time range slider with auto-fit and reset buttons.
-    Returns time_bounds dict or None.
+    Renders the time range slider with Auto-Fit and Reset buttons.
+    Returns a time_bounds dict or None if no time column is available.
 """
 
 import math
@@ -31,8 +32,16 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                             default_lon_min, default_lon_max,
                             plot_type="Horizontal Cartesian",
                             sr_track_grp=None, plotter=None):
-    """Renders domain limit sliders + auto-fit / reset buttons.
-    Returns (domain_bounds, convert_dom, vert_range, domain_z_col)."""
+    """
+    Renders the Plot Domain Limits sidebar container.
+
+    In Horizontal Cartesian mode, renders lat/lon range sliders and an optional
+    vertical range slider. In Storm-Relative mode, renders a max-range (km)
+    slider instead of lat/lon sliders. Also renders Auto-Fit and Reset buttons
+    that compute tight bounds from the currently visible data.
+
+    Returns (domain_bounds, convert_dom, vert_range, domain_z_col).
+    """
 
     is_sr = (plot_type == "Horizontal Storm-Relative")
 
@@ -70,7 +79,7 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                 del st.session_state['v_vert_range']
 
         if is_sr:
-            # SR mode: left column = Max Range (km) slider, right column hidden
+            # Storm-Relative mode: replace lat/lon sliders with a single max-range (km) slider
             sr_default_max = 500.0
             if plotter is not None and sr_track_grp:
                 try:
@@ -108,7 +117,7 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                     label_visibility="collapsed"
                 )
 
-            # Build a dummy domain_bounds with no lat/lon filtering for SR
+            # Pass unrestricted lat/lon bounds — SR filtering is handled by max range alone
             domain_bounds = {
                 'lat_min': -90.0, 'lat_max': 90.0,
                 'lon_min': -180.0, 'lon_max': 180.0,
@@ -364,15 +373,15 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
 
         with b2:
             if st.button("🔄 Reset domain", width="stretch"):
-                # Unconditionally wipe all domain bounds so it works reliably in either mode
+                # Wipe all domain bounds so the reset works correctly in both Cartesian and SR modes
                 st.session_state._force_lat_range = (_gd_lat[0], _gd_lat[1])
                 st.session_state._force_lon_range = (_gd_lon[0], _gd_lon[1])
                 st.session_state.pop('_slider_lat_bounds', None)
                 st.session_state.pop('_slider_lon_bounds', None)
                 st.session_state._force_domain_fit = True
                 st.session_state._reset_z_range    = True
-                
-                # Explicitly wipe the SR widget state from both session and persistence dictionaries
+
+                # Also clear the SR max-range widget from both session state and the persistence dict
                 st.session_state.pop('_force_sr_max_range', None)
                 if 'v_sr_max_range' in st.session_state:
                     del st.session_state['v_sr_max_range']
@@ -387,7 +396,15 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
 def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
                          plot_type="Horizontal Cartesian",
                          sr_track_grp=None, plotter=None):
-    """Renders time slider + auto-fit / reset buttons. Returns time_bounds or None."""
+    """
+    Renders the Plot Time Limits sidebar container.
+
+    Parses the group's time column (YYYYMMDDHHmmss format) to determine the
+    full mission time range, then renders a datetime range slider. Also renders
+    Auto-Fit and Reset buttons that narrow or restore the time window based on
+    the currently visible domain. Returns a time_bounds dict, or None if no
+    valid time column is found.
+    """
 
     from datetime import timedelta
 
@@ -427,7 +444,7 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
         is_track_grp = 'TRACK' in sel_group.upper()
         default_range = (s_min_dt, s_max_dt)
 
-        # 1. MOVE THESE THREE LINES UP HERE
+        # Use stored slider bounds when available so auto-fit ranges are preserved
         _t_bounds = st.session_state.get('_slider_time_bounds')
         _t_slider_min = _t_bounds[0] if _t_bounds else s_min_dt
         _t_slider_max = _t_bounds[1] if _t_bounds else s_max_dt
@@ -451,7 +468,7 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
         else:
             t_c_min, t_c_max = st.session_state.v_time_range
             
-            # 2. FIX CLAMPING: Use _t_slider_min / _t_slider_max instead of s_min_dt / s_max_dt
+            # Clamp to current slider bounds so auto-fit ranges are respected
             t_c_min = max(_t_slider_min, min(t_c_min, _t_slider_max))
             t_c_max = max(_t_slider_min, min(t_c_max, _t_slider_max))
             
@@ -554,3 +571,4 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
         }
 
     return time_bounds
+                             
