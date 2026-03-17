@@ -23,7 +23,6 @@ def display_summary_table(final_df, unit):
     df = final_df.copy()
     
     # Safely extract Storm ID from filename (e.g., 'hrdobs_BERYL02L_2024...' -> 'BERYL02L')
-    # The regex looks for letters + exactly 2 digits + 1 letter, bypassing prefixes like 'hrdobs_'
     extracted_id = df['Constructed_File_Name'].str.extract(r'(?i)([A-Z]+\d{2}[A-Z])')[0]
     df['Storm_ID'] = extracted_id.str.upper().fillna(df['Storm'])
 
@@ -40,6 +39,10 @@ def display_summary_table(final_df, unit):
     for storm_id, grp in df.groupby('Storm_ID', sort=False):
         year = grp['Year'].iloc[0]
         total_cycles = len(grp)
+
+        # Extract sorting keys
+        start_cycle = grp['Cycle_Raw'].iloc[0]
+        storm_num = str(storm_id)[-3:] if len(str(storm_id)) >= 3 else str(storm_id)
 
         # Date Range
         c_min_disp = grp['Cycle_Display'].iloc[0].replace('\xa0', ' ')
@@ -67,6 +70,8 @@ def display_summary_table(final_df, unit):
 
         row = {
             'Year': year,
+            '_Storm_Num': storm_num,       # Hidden column for sorting
+            '_Start_Cycle': start_cycle,   # Hidden column for sorting
             'Storm': storm_id,
             'Total Cycles': total_cycles,
             'Date Range': date_range,
@@ -92,6 +97,11 @@ def display_summary_table(final_df, unit):
         summary_data.append(row)
 
     sum_df = pd.DataFrame(summary_data)
+
+    # --- Apply the new sorting logic ---
+    if not sum_df.empty:
+        sum_df = sum_df.sort_values(by=['Year', '_Storm_Num', '_Start_Cycle'], ascending=[True, True, True])
+        sum_df = sum_df.drop(columns=['_Storm_Num', '_Start_Cycle']).reset_index(drop=True)
 
     # Build MultiIndex structure dynamically
     multi_cols = []
