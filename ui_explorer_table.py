@@ -4,12 +4,154 @@
 ui_explorer_table.py
 ----------
 Formats and renders the filtered inventory results as a styled HTML multi-index table with group-separated columns and hover tooltips on storm names.
-
+It also includes a summary table renderer that groups active results by individual storms.
 """
 
 import pandas as pd
 import streamlit as st
 from config import EXPECTED_GROUPS
+
+def display_summary_table(final_df, unit):
+    """Formats and renders a summary table grouped by storm."""
+    if final_df.empty:
+        st.info("No data to summarize.")
+        return
+
+    MS_TO_KTS = 1.94384
+    mult = MS_TO_KTS if unit == "knots" else 1.0
+
+    df = final_df.copy()
+    
+    # Extract Storm ID from filename (e.g., 'BERYL02L_2024...' -> 'BERYL02L')
+    df['Storm_ID'] = df['Constructed_File_Name'].apply(
+        lambda x: str(x).split('_')[0] if '_' in str(x) else str(x).split('.')[0]
+    )
+
+    # Natural lifecycle order for categories
+    cat_order = {c: i for i, c in enumerate(
+        ['DB', 'TD', 'TS', 'H1', 'H2', 'H3', 'H4', 'H5', 'EX', 'LO', 'WV', 'Unknown']
+    )}
+
+    summary_data = []
+
+    # Sort to ensure chronological order for cycles
+    df = df.sort_values(by=['Storm_ID', 'Cycle_Raw'])
+
+    for storm_id, grp in df.groupby('Storm_ID', sort=False):
+        year = grp['Year'].iloc[0]
+
+        # Cycle Range
+        c_min_disp = grp['Cycle_Display'].iloc[0].replace('\xa0', ' ')
+        c_max_disp = grp['Cycle_Display'].iloc[-1].replace('\xa0', ' ')
+        cycle_range = f"{c_min_disp} - {c_max_disp}" if c_min_disp != c_max_disp else c_min_disp
+
+        # Lat/Lon ranges
+        lat_min, lat_max = grp['Lat'].min(), grp['Lat'].max()
+        lat_range = f"{lat_min:.1f} - {lat_max:.1f}" if pd.notna(lat_min) else ""
+
+        lon_min, lon_max = grp['Lon'].min(), grp['Lon'].max()
+        lon_range = f"{lon_min:.1f} - {lon_max:.1f}" if pd.notna(lon_min) else ""
+
+        # Intensity/MSLP ranges
+        int_min, int_max = grp['Intensity_ms'].min() * mult, grp['Intensity_ms'].max() * mult
+        int_range = f"{int_min:.1f} - {int_max:.1f}" if pd.notna(int_min) else ""
+
+        p_min, p_max = grp['MSLP_hPa'].min(), grp['MSLP_hPa'].max()
+        p_range = f"{p_min:.1f} - {p_max:.1f}" if pd.notna(p_min) else ""
+
+        # Sorted Unique Categories
+        unique_cats = grp['TC_Category'].dropna().unique()
+        sorted_cats = sorted(unique_cats, key=lambda x: cat_order.get(x, 99))
+        cats_str = "-".join(sorted_cats)
+
+        row = {
+            'Year': year,
+            'Storm': storm_id,
+            'Cycle Range': cycle_range,
+            'Lat Range': lat_range,
+            'Lon Range': lon_range,
+            'Intensity Range': int_range,
+            'MSLP Range': p_range,
+            'Categories': cats_str
+        }
+
+        # Observations / Cycles Count for each Platform
+        for g in EXPECTED_GROUPS:
+            if g in grp.columns:
+                obs_sum = pd.to_numeric(grp[g], errors='coerce').fillna(0).sum()
+                cycles_count = (pd.to_numeric(grp[g], errors='coerce').fillna(0) > 0).sum()
+                if cycles_count > 0:
+                    row[g] = f"{int(obs_sum):,} / {int(cycles_count)}"
+                else:
+                    row[g] = ""
+            else:
+                row[g] = ""
+
+        summary_data.append(row)
+
+    sum_df = pd.DataFrame(summary_data)
+
+    # Build MultiIndex structure dynamically
+    multi_cols = []
+    group_starts = []
+    current_top = None
+
+    raw_columns = ['Year', 'Storm', 'Cycle Range', 'Lat Range', 'Lon Range', 'Intensity Range', 'MSLP Range', 'Categories'] + EXPECTED_GROUPS
+
+    final_cols = []
+    for raw_col in raw_columns:
+        if raw_col not in sum_df.columns:
+            continue
+
+        if raw_col == 'Year': tup = ('Basic Data', 'Year')
+        elif raw_col == 'Storm': tup = ('Basic Data', 'Storm')
+        elif raw_col == 'Cycle Range': tup = ('Basic Data', 'Cycle Range')
+        elif raw_col == 'Lat Range': tup = ('Basic Data', 'Lat Range<br>°N')
+        elif raw_col == 'Lon Range': tup = ('Basic Data', 'Lon Range<br>°W')
+        elif raw_col == 'Intensity Range': tup = ('Basic Data', f'Intensity Range<br>({unit})')
+        elif raw_col == 'MSLP Range': tup = ('Basic Data', 'MSLP Range<br>(hPa)')
+        elif raw_col == 'Categories': tup = ('Basic Data', 'Categories')
+        else:
+            top = 'Basic Data'
+            bottom = raw_col
+            if raw_col.startswith('dropsonde_'): top = 'Dropsondes'; bottom = raw_col.replace('dropsonde_', '').upper()
+            elif raw_col.startswith('flight_level_hdobs_'): top = 'Flight Level'; bottom = raw_col.replace('flight_level_hdobs_', '').upper()
+            elif raw_col.startswith('sfmr_'): top = 'SFMR'; bottom = raw_col.replace('sfmr_', '').upper()
+            elif raw_col.startswith('tdr_'): top = 'Tail Doppler Radar (TDR)'; bottom = raw_col.replace('tdr_', '').upper()
+            elif raw_col.startswith('track_'):
+                top = 'Track Data'
+                bottom = 'Best Track' if 'best' in raw_col.lower() else 'Spline' if 'spline' in raw_col.lower() else 'Vortex' if 'vortex' in raw_col.lower() else raw_col
+            tup = (top, bottom)
+
+        if tup[0] != current_top:
+            group_starts.append(len(multi_cols) + 1)
+            current_top = tup[0]
+
+        multi_cols.append(tup)
+        final_cols.append(raw_col)
+
+    sum_df = sum_df[final_cols]
+    sum_df.columns = pd.MultiIndex.from_tuples(multi_cols)
+
+    # Styling
+    thick_sel = ", ".join([f"th:nth-child({idx}), td:nth-child({idx})" for idx in group_starts])
+
+    styled_html = (
+        sum_df.style
+        .set_properties(**{'text-align': 'center', 'padding': '4px', 'font-size': '13px', 'white-space': 'nowrap'})
+        .set_table_styles([
+            {'selector': 'table', 'props': [('width', '100%'), ('border-collapse', 'collapse'), ('border', '2px solid black')]},
+            {'selector': 'th', 'props': [('background-color', '#f0f2f6'), ('padding', '6px'), ('border', '1px solid #ddd'), ('text-align', 'center')]},
+            {'selector': thick_sel, 'props': [('border-left', '2px solid black')]},
+            {'selector': 'th.col_heading.level0', 'props': [('border-top', '2px solid black'), ('border-bottom', '2px solid black'), ('border-right', '2px solid black'), ('text-align', 'center')]},
+            {'selector': 'th.col_heading.level1', 'props': [('border-bottom', '2px solid black'), ('min-width', '80px')]},
+            {'selector': 'th:last-child, td:last-child', 'props': [('border-right', '2px solid black')]},
+            {'selector': 'td', 'props': [('border-bottom', '1px solid #eee'), ('text-align', 'center')]}
+        ]).hide(axis="index").to_html(escape=False)
+    )
+
+    st.markdown(f"<div style='max-height: 400px; overflow-x: auto; overflow-y: auto;'>{styled_html}</div>", unsafe_allow_html=True)
+
 
 def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
     """Formats and renders the Pandas dataframe as a custom HTML block."""
