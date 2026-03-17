@@ -10,7 +10,7 @@ This module is responsible only for:
   2. Calling render_explorer_controls() to get an ExplorerIntent
   3. Detecting whether any filter is active
   4. Filtering the dataframe
-  5. Rendering table controls (sort, download) and the results table
+  5. Rendering table controls (sort, download), summary table, and the results table
 """
 
 import streamlit as st
@@ -23,7 +23,7 @@ from config import EXPECTED_GROUPS
 from data_utils import load_inventory_db
 from ui_explorer_controls import render_explorer_controls, get_dropdown_mask, MS_TO_KTS
 from ui_components import spacer
-from ui_explorer_table import display_explorer_table
+from ui_explorer_table import display_explorer_table, display_summary_table
 
 
 def render_explorer_tab():
@@ -82,9 +82,13 @@ def render_explorer_tab():
     final_df['Lon'] = final_df['Lon'].abs()
 
     # ------------------------------------------------------------------
-    # Table controls
+    # Summary Table + Table controls
     # ------------------------------------------------------------------
     spacer('lg')
+
+    # Render the collapsed Summary Table expander just before controls
+    with st.expander("📊 View Summary of Filtered Results", expanded=False):
+        display_summary_table(final_df, intent.unit)
 
     def reset_table_sort():
         st.session_state.ui_sort_col   = 'Year'
@@ -149,3 +153,4 @@ def render_explorer_tab():
     st.markdown(f"#### 🔎 Found **{len(final_df)}** matching files")
 
     display_explorer_table(final_df, intent.unit, sort_col_internal, is_asc)
+  
