@@ -22,10 +22,10 @@ def display_summary_table(final_df, unit):
 
     df = final_df.copy()
     
-    # Extract Storm ID from filename (e.g., 'BERYL02L_2024...' -> 'BERYL02L')
-    df['Storm_ID'] = df['Constructed_File_Name'].apply(
-        lambda x: str(x).split('_')[0] if '_' in str(x) else str(x).split('.')[0]
-    )
+    # Safely extract Storm ID from filename (e.g., 'hrdobs_BERYL02L_2024...' -> 'BERYL02L')
+    # The regex looks for letters + exactly 2 digits + 1 letter, bypassing prefixes like 'hrdobs_'
+    extracted_id = df['Constructed_File_Name'].str.extract(r'(?i)([A-Z]+\d{2}[A-Z])')[0]
+    df['Storm_ID'] = extracted_id.str.upper().fillna(df['Storm'])
 
     # Natural lifecycle order for categories
     cat_order = {c: i for i, c in enumerate(
