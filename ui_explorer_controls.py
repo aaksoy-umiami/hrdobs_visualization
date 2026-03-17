@@ -141,6 +141,12 @@ def render_explorer_controls(db_df, has_vars,
         st.session_state.ui_slp  = (init_min_p, init_max_p)
         st.session_state.ui_sort_col   = 'Year'
         st.session_state.ui_sort_order = 'Ascending'
+        
+        # Reset tracking buffers so auto-expand knows we are at full global boundaries
+        st.session_state._last_t_min_i = float(np.floor(raw_min_i * cur_mult))
+        st.session_state._last_t_max_i = float(np.ceil(raw_max_i * cur_mult))
+        st.session_state._last_t_min_p = init_min_p
+        st.session_state._last_t_max_p = init_max_p
 
     def reset_table_sort():
         st.session_state.ui_sort_col   = 'Year'
@@ -192,28 +198,67 @@ def render_explorer_controls(db_df, has_vars,
             if abs(c_high - old_g_max) < 0.1: new_high = g_max_i_unit
             st.session_state.ui_int  = (new_low, new_high)
             st.session_state.prev_unit = unit
+            
+            # Scale edge tracking when units change
+            last_min_old = st.session_state.get('_last_t_min_i', old_g_min)
+            last_max_old = st.session_state.get('_last_t_max_i', old_g_max)
+            st.session_state._last_t_min_i = last_min_old * MS_TO_KTS if unit == "knots" else last_min_old / MS_TO_KTS
+            st.session_state._last_t_max_i = last_max_old * MS_TO_KTS if unit == "knots" else last_max_old / MS_TO_KTS
 
-        # Clamp slider to the currently visible intensity range
+        # Handle Intensity Clamping & Expanding
         i_df     = db_df[get_dropdown_mask(db_df, 'Intensity', has_vars)]
         t_min_i  = float(np.floor(i_df['Intensity_ms'].min() * mult)) if not i_df.empty else g_min_i_unit
         t_max_i  = float(np.ceil( i_df['Intensity_ms'].max() * mult)) if not i_df.empty else g_max_i_unit
-        st.session_state.ui_int = (
-            max(t_min_i, min(st.session_state.ui_int[0], t_max_i)),
-            max(t_min_i, min(st.session_state.ui_int[1], t_max_i)),
-        )
+        
+        last_t_min_i = st.session_state.get('_last_t_min_i', g_min_i_unit)
+        last_t_max_i = st.session_state.get('_last_t_max_i', g_max_i_unit)
+        curr_val_i   = st.session_state.ui_int
+        
+        # If the user had the slider maxed out relative to the previous data bounds,
+        # auto-expand to the new data bounds. Otherwise, just clamp.
+        if curr_val_i[0] <= last_t_min_i + 0.1 and curr_val_i[1] >= last_t_max_i - 0.1:
+            new_val_i = (t_min_i, t_max_i)
+        else:
+            new_val_i = (
+                max(t_min_i, min(curr_val_i[0], t_max_i)),
+                max(t_min_i, min(curr_val_i[1], t_max_i)),
+            )
+            # Prevent min > max if data is strictly outside bounds
+            if new_val_i[0] > new_val_i[1]:
+                new_val_i = (t_min_i, t_max_i)
+
+        st.session_state.ui_int = new_val_i
+        st.session_state._last_t_min_i = t_min_i
+        st.session_state._last_t_max_i = t_max_i
+
         st.slider("Intensity", min_value=g_min_i_unit, max_value=g_max_i_unit,
                   step=5.0 if unit == "knots" else 1.0,
                   key="ui_int", label_visibility="collapsed")
 
-        # MSLP slider
+        # Handle MSLP Clamping & Expanding
         sidebar_label('MSLP (hPa)', size='label')
         p_df    = db_df[get_dropdown_mask(db_df, 'MSLP', has_vars)]
         t_min_p = float(np.floor(p_df['MSLP_hPa'].min())) if not p_df.empty else init_min_p
         t_max_p = float(np.ceil( p_df['MSLP_hPa'].max())) if not p_df.empty else init_max_p
-        st.session_state.ui_slp = (
-            max(t_min_p, min(st.session_state.ui_slp[0], t_max_p)),
-            max(t_min_p, min(st.session_state.ui_slp[1], t_max_p)),
-        )
+        
+        last_t_min_p = st.session_state.get('_last_t_min_p', init_min_p)
+        last_t_max_p = st.session_state.get('_last_t_max_p', init_max_p)
+        curr_val_p   = st.session_state.ui_slp
+        
+        if curr_val_p[0] <= last_t_min_p + 0.1 and curr_val_p[1] >= last_t_max_p - 0.1:
+            new_val_p = (t_min_p, t_max_p)
+        else:
+            new_val_p = (
+                max(t_min_p, min(curr_val_p[0], t_max_p)),
+                max(t_min_p, min(curr_val_p[1], t_max_p)),
+            )
+            if new_val_p[0] > new_val_p[1]:
+                new_val_p = (t_min_p, t_max_p)
+
+        st.session_state.ui_slp = new_val_p
+        st.session_state._last_t_min_p = t_min_p
+        st.session_state._last_t_max_p = t_max_p
+
         st.slider("MSLP", min_value=init_min_p, max_value=init_max_p,
                   step=1.0, key="ui_slp", label_visibility="collapsed")
 
@@ -278,3 +323,4 @@ def render_explorer_controls(db_df, has_vars,
         init_min_p   = init_min_p,
         init_max_p   = init_max_p,
     )
+                                  
