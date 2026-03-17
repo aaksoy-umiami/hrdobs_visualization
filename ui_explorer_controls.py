@@ -54,36 +54,41 @@ class ExplorerIntent:
 # state it depends on.
 # ---------------------------------------------------------------------------
 
-def get_dropdown_mask(df, skip_filter, has_vars):
-    """Return a boolean Series respecting all active filters except skip_filter."""
+def get_dropdown_mask(df, skip_filters, has_vars):
+    """Return a boolean Series respecting all active filters except those in skip_filters."""
+    if isinstance(skip_filters, str):
+        skip_filters = [skip_filters]
+    elif skip_filters is None:
+        skip_filters = []
+
     m    = pd.Series(True, index=df.index)
     mult = 1 / MS_TO_KTS if st.session_state.get('ui_unit') == "knots" else 1.0
 
-    if skip_filter != 'Year'        and st.session_state.ui_years:
+    if 'Year' not in skip_filters and st.session_state.ui_years:
         m &= df['Year'].isin(st.session_state.ui_years)
-    if skip_filter != 'Storm'       and st.session_state.ui_storms:
+    if 'Storm' not in skip_filters and st.session_state.ui_storms:
         m &= df['Storm'].isin(st.session_state.ui_storms)
-    if skip_filter != 'TC_Category' and st.session_state.ui_cats:
+    if 'TC_Category' not in skip_filters and st.session_state.ui_cats:
         m &= df['TC_Category'].isin(st.session_state.ui_cats)
-    if skip_filter != 'Basin'       and st.session_state.ui_basins:
+    if 'Basin' not in skip_filters and st.session_state.ui_basins:
         m &= df['Basin'].isin(st.session_state.ui_basins)
-    if skip_filter != 'Groups'      and st.session_state.ui_groups:
+    if 'Groups' not in skip_filters and st.session_state.ui_groups:
         v_cols = [g for g in st.session_state.ui_groups if g in df.columns]
         if v_cols:
             m &= df[v_cols].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1) > 0
-    if skip_filter != 'Vars' and st.session_state.ui_vars and has_vars:
+    if 'Vars' not in skip_filters and st.session_state.ui_vars and has_vars:
         m &= df['Observation_Variables'].apply(
             lambda x: any(
                 v in [s.strip() for s in str(x).split(',')]
                 for v in st.session_state.ui_vars
             )
         )
-    if skip_filter != 'Intensity':
+    if 'Intensity' not in skip_filters:
         m &= (
             (df['Intensity_ms'] >= st.session_state.ui_int[0] * mult) &
             (df['Intensity_ms'] <= st.session_state.ui_int[1] * mult)
         )
-    if skip_filter != 'MSLP':
+    if 'MSLP' not in skip_filters:
         m &= (
             (df['MSLP_hPa'] >= st.session_state.ui_slp[0]) &
             (df['MSLP_hPa'] <= st.session_state.ui_slp[1])
@@ -205,10 +210,13 @@ def render_explorer_controls(db_df, has_vars,
             st.session_state._last_t_min_i = last_min_old * MS_TO_KTS if unit == "knots" else last_min_old / MS_TO_KTS
             st.session_state._last_t_max_i = last_max_old * MS_TO_KTS if unit == "knots" else last_max_old / MS_TO_KTS
 
+        # Base mask skipping BOTH sliders to avoid mutual restriction deadlock
+        slider_mask = get_dropdown_mask(db_df, ['Intensity', 'MSLP'], has_vars)
+        slider_df   = db_df[slider_mask]
+
         # Handle Intensity Clamping & Expanding
-        i_df     = db_df[get_dropdown_mask(db_df, 'Intensity', has_vars)]
-        t_min_i  = float(np.floor(i_df['Intensity_ms'].min() * mult)) if not i_df.empty else g_min_i_unit
-        t_max_i  = float(np.ceil( i_df['Intensity_ms'].max() * mult)) if not i_df.empty else g_max_i_unit
+        t_min_i  = float(np.floor(slider_df['Intensity_ms'].min() * mult)) if not slider_df.empty else g_min_i_unit
+        t_max_i  = float(np.ceil( slider_df['Intensity_ms'].max() * mult)) if not slider_df.empty else g_max_i_unit
         
         last_t_min_i = st.session_state.get('_last_t_min_i', g_min_i_unit)
         last_t_max_i = st.session_state.get('_last_t_max_i', g_max_i_unit)
@@ -237,9 +245,8 @@ def render_explorer_controls(db_df, has_vars,
 
         # Handle MSLP Clamping & Expanding
         sidebar_label('MSLP (hPa)', size='label')
-        p_df    = db_df[get_dropdown_mask(db_df, 'MSLP', has_vars)]
-        t_min_p = float(np.floor(p_df['MSLP_hPa'].min())) if not p_df.empty else init_min_p
-        t_max_p = float(np.ceil( p_df['MSLP_hPa'].max())) if not p_df.empty else init_max_p
+        t_min_p = float(np.floor(slider_df['MSLP_hPa'].min())) if not slider_df.empty else init_min_p
+        t_max_p = float(np.ceil( slider_df['MSLP_hPa'].max())) if not slider_df.empty else init_max_p
         
         last_t_min_p = st.session_state.get('_last_t_min_p', init_min_p)
         last_t_max_p = st.session_state.get('_last_t_max_p', init_max_p)
@@ -323,4 +330,3 @@ def render_explorer_controls(db_df, has_vars,
         init_min_p   = init_min_p,
         init_max_p   = init_max_p,
     )
-                                  
