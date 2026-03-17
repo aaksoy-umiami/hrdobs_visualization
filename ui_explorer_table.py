@@ -39,11 +39,12 @@ def display_summary_table(final_df, unit):
 
     for storm_id, grp in df.groupby('Storm_ID', sort=False):
         year = grp['Year'].iloc[0]
+        total_cycles = len(grp)
 
-        # Cycle Range
+        # Date Range
         c_min_disp = grp['Cycle_Display'].iloc[0].replace('\xa0', ' ')
         c_max_disp = grp['Cycle_Display'].iloc[-1].replace('\xa0', ' ')
-        cycle_range = f"{c_min_disp} - {c_max_disp}" if c_min_disp != c_max_disp else c_min_disp
+        date_range = f"{c_min_disp} - {c_max_disp}" if c_min_disp != c_max_disp else c_min_disp
 
         # Lat/Lon ranges
         lat_min, lat_max = grp['Lat'].min(), grp['Lat'].max()
@@ -67,7 +68,8 @@ def display_summary_table(final_df, unit):
         row = {
             'Year': year,
             'Storm': storm_id,
-            'Cycle Range': cycle_range,
+            'Total Cycles': total_cycles,
+            'Date Range': date_range,
             'Lat Range': lat_range,
             'Lon Range': lon_range,
             'Intensity Range': int_range,
@@ -96,7 +98,7 @@ def display_summary_table(final_df, unit):
     group_starts = []
     current_top = None
 
-    raw_columns = ['Year', 'Storm', 'Cycle Range', 'Lat Range', 'Lon Range', 'Intensity Range', 'MSLP Range', 'Categories'] + EXPECTED_GROUPS
+    raw_columns = ['Year', 'Storm', 'Total Cycles', 'Date Range', 'Lat Range', 'Lon Range', 'Intensity Range', 'MSLP Range', 'Categories'] + EXPECTED_GROUPS
 
     final_cols = []
     for raw_col in raw_columns:
@@ -105,7 +107,8 @@ def display_summary_table(final_df, unit):
 
         if raw_col == 'Year': tup = ('Basic Data', 'Year')
         elif raw_col == 'Storm': tup = ('Basic Data', 'Storm')
-        elif raw_col == 'Cycle Range': tup = ('Basic Data', 'Cycle Range')
+        elif raw_col == 'Total Cycles': tup = ('Basic Data', 'Total Cycles')
+        elif raw_col == 'Date Range': tup = ('Basic Data', 'Date Range')
         elif raw_col == 'Lat Range': tup = ('Basic Data', 'Lat Range<br>°N')
         elif raw_col == 'Lon Range': tup = ('Basic Data', 'Lon Range<br>°W')
         elif raw_col == 'Intensity Range': tup = ('Basic Data', f'Intensity Range<br>({unit})')
@@ -114,12 +117,14 @@ def display_summary_table(final_df, unit):
         else:
             top = 'Basic Data'
             bottom = raw_col
-            if raw_col.startswith('dropsonde_'): top = 'Dropsondes'; bottom = raw_col.replace('dropsonde_', '').upper()
-            elif raw_col.startswith('flight_level_hdobs_'): top = 'Flight Level'; bottom = raw_col.replace('flight_level_hdobs_', '').upper()
-            elif raw_col.startswith('sfmr_'): top = 'SFMR'; bottom = raw_col.replace('sfmr_', '').upper()
-            elif raw_col.startswith('tdr_'): top = 'Tail Doppler Radar (TDR)'; bottom = raw_col.replace('tdr_', '').upper()
+            suffix = ' (Num. Observations / Cycles Available)'
+            
+            if raw_col.startswith('dropsonde_'): top = 'Dropsondes' + suffix; bottom = raw_col.replace('dropsonde_', '').upper()
+            elif raw_col.startswith('flight_level_hdobs_'): top = 'Flight Level' + suffix; bottom = raw_col.replace('flight_level_hdobs_', '').upper()
+            elif raw_col.startswith('sfmr_'): top = 'SFMR' + suffix; bottom = raw_col.replace('sfmr_', '').upper()
+            elif raw_col.startswith('tdr_'): top = 'Tail Doppler Radar (TDR)' + suffix; bottom = raw_col.replace('tdr_', '').upper()
             elif raw_col.startswith('track_'):
-                top = 'Track Data'
+                top = 'Track Data' + suffix
                 bottom = 'Best Track' if 'best' in raw_col.lower() else 'Spline' if 'spline' in raw_col.lower() else 'Vortex' if 'vortex' in raw_col.lower() else raw_col
             tup = (top, bottom)
 
