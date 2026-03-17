@@ -63,6 +63,19 @@ def load_inventory_db(db_path):
         df.loc[df['MSLP_hPa'] > 2000, 'MSLP_hPa'] /= 100.0
             
     df['TC_Category'] = df['TC_Category'].fillna("Unknown").astype(str).str.replace(r'[\[\]\'"]', '', regex=True)
+
+    def refine_hu_category(row):
+        if row['TC_Category'] == 'HU' and pd.notna(row['Intensity_ms']):
+            v_kt = row['Intensity_ms'] * 1.94384  # Convert m/s to knots
+            if v_kt >= 137: return 'H5'
+            if v_kt >= 113: return 'H4'
+            if v_kt >= 96:  return 'H3'
+            if v_kt >= 83:  return 'H2'
+            if v_kt >= 64:  return 'H1'
+        return row['TC_Category']
+
+    df['TC_Category'] = df.apply(refine_hu_category, axis=1)
+    
     df['Basin'] = df['Filename'].apply(get_basin_from_filename)
     df['Constructed_File_Name'] = df['Filename']
     
