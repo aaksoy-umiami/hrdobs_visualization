@@ -134,10 +134,10 @@ def _render_about():
         st.markdown("#### 👤 Author")
         st.markdown("""
 **Altug Aksoy**
-Scientist, *CIMAS/Rosenstiel School, University of Miami* & *Hurricane Research Division / AOML, NOAA*
+Scientist, *CIMAS/Rosenstiel School, University of Miami*
 
 📧 [aaksoy@miami.edu](mailto:aaksoy@miami.edu)  
-🌐 [NOAA/HRD Profile](https://www.aoml.noaa.gov/hrd/people/altugaksoy/)  
+🌐 [LinkedIn Profile](https://www.linkedin.com/in/altugaksoy)  
 🆔 [ORCID: 0000-0002-2335-7710](https://orcid.org/0000-0002-2335-7710)
         """)
 
