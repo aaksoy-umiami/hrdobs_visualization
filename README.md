@@ -24,5 +24,5 @@ This tool was developed by **Dr. Altug Aksoy** (University of Miami / CIMAS) to 
 If you have questions regarding the data, the visualization tool, or encounter technical issues, please feel free to reach out:
 
 * **Direct Code Inquiry**: <a href="mailto:aaksoy@miami.edu?subject=Question%20about%20HRDOBS%20Visualizer" target="_blank">Click here to send an email inquiry</a>
-* **Direct Dataset Inquiry**: <a href="mailto:kathryn.sellwood@noaa.gov?subject=Question%20about%20HRDOBS%20Dataset" target="_blank">Click here to send an email inquiry</a>
+* **Direct Dataset Inquiry**: <a href="mailto:ksellwood@earth.miami.edu?subject=Question%20about%20HRDOBS%20Dataset" target="_blank">Click here to send an email inquiry</a>
 * **Community**: <a href="https://github.com/hailcloud-um/hrdobs-visualization/discussions" target="_blank">Join the conversation in the Discussions tab!</a>
