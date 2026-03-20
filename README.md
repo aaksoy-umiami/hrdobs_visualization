@@ -14,7 +14,7 @@ Built to streamline the visualization of complex atmospheric data, this companio
 * **Extensible Architecture:** Built with Streamlit, the app separates UI layout, data utilities (`data_utils.py`), and rendering (`plotter.py`, `basemap.py`) for easy academic extension.
 
 ## Research & Authorship
-This tool was developed by **Dr. Altug Aksoy** (University of Miami / CIMAS & NOAA / AOML / HRD) to assist researchers, meteorologists, and students in interacting with hurricane observation data.
+This tool was developed by **Dr. Altug Aksoy** (University of Miami / CIMAS) to assist researchers, meteorologists, and students in interacting with hurricane observation data.
 
 *(Note: If there is an associated publication or official dataset DOI, it can be cited here).*
 
