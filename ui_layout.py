@@ -102,7 +102,7 @@ def setup_page():
         initial_sidebar_state="expanded",
         menu_items={
             'Report a bug': "mailto:aaksoy@miami.edu",
-            'Get help': "https://github.com/hailcloud-um/hrdobs_visualization",
+            'Get help': "https://github.com/aaksoy-umiami/hrdobs_visualization",
             'About': """
             ### HRDOBS Dataset Explorer & Visualizer
             **Interactive tool for exploring AI-Ready HDF5 hurricane reconnaissance observations**
@@ -111,7 +111,7 @@ def setup_page():
             dropsonde, SFMR, and radar observations from NOAA and Air Force reconnaissance aircraft.
 
             **Author:** Altug Aksoy
-            **Affiliation:** CIMAS/Rosenstiel School, University of Miami & NOAA/AOML/HRD
+            **Affiliation:** CIMAS/Rosenstiel School, University of Miami
 
             *For questions or bug reports, contact aaksoy@miami.edu*
             """
@@ -326,6 +326,6 @@ def render_footer():
         f"<div style='text-align: center; color: {CLR_SUBTLE}; "
         f"font-size: {FS_FOOTER}px;'>"
         f"© {datetime.now().year} Altug Aksoy  |  "
-        f"University of Miami/Cooperative Inst. for Marine and Atmospheric Sci.  &  NOAA/Atlantic Oceanographic and Meteorological Lab.</div>",
+        f"University of Miami/Cooperative Inst. for Marine and Atmospheric Sci.</div>",
         unsafe_allow_html=True
     )
