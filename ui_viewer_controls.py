@@ -569,10 +569,13 @@ def _render_plot_type_section(data_pack, sel_group, is_3d, h_col=None, p_col=Non
             "Horizontal Storm-Relative", "Radial-Height Profile"):
         st.session_state.v_plot_type = "Horizontal Cartesian"
 
-    if st.session_state.v_plot_type == "Horizontal Storm-Relative":
-        st.session_state.v_show_cen = True
-    if st.session_state.v_plot_type == "Radial-Height Profile":
-        st.session_state.v_show_cen = False
+    current_plot_type = st.session_state.get('v_plot_type', "Horizontal Cartesian")
+    if st.session_state.get('_prev_plot_type') != current_plot_type:
+        if current_plot_type == "Horizontal Storm-Relative":
+            st.session_state.v_show_cen = True
+        elif current_plot_type == "Radial-Height Profile":
+            st.session_state.v_show_cen = False
+        st.session_state._prev_plot_type = current_plot_type
 
     with st.sidebar.container(border=True):
         st.markdown("### 🧭 Plot Type")
@@ -1002,7 +1005,7 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                 except Exception as e:
                     st.warning(f"SR range error: {type(e).__name__}: {e}")
 
-            sr_slider_max = max(sr_default_max, 25.0)
+            sr_slider_max = max(sr_default_max, 50.0)
 
             if '_force_sr_max_range' in st.session_state:
                 st.session_state.v_sr_max_range = st.session_state.pop('_force_sr_max_range')

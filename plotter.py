@@ -712,8 +712,8 @@ class StormPlotter:
         track_df = self.data[track_grp]
         tcols = {c.lower(): c for c in track_df.columns}
         t_col   = tcols.get('time')
-        lat_col = tcols.get('lat')
-        lon_col = tcols.get('lon')
+        lat_col = next((tcols[c] for c in ['lat', 'latitude', 'clat'] if c in tcols), None)
+        lon_col = next((tcols[c] for c in ['lon', 'longitude', 'clon'] if c in tcols), None)
         if not all([t_col, lat_col, lon_col]):
             return None
 
@@ -777,8 +777,8 @@ class StormPlotter:
             return 500.0
         df = df_override if df_override is not None else self.data[group_name]
         cols_lower = {c.lower(): c for c in df.columns}
-        lat_col  = next((cols_lower[c] for c in ['lat', 'latitude']  if c in cols_lower), None)
-        lon_col  = next((cols_lower[c] for c in ['lon', 'longitude'] if c in cols_lower), None)
+        lat_col  = next((cols_lower[c] for c in ['lat', 'latitude', 'clat']  if c in cols_lower), None)
+        lon_col  = next((cols_lower[c] for c in ['lon', 'longitude', 'clon'] if c in cols_lower), None)
         time_col = cols_lower.get('time')
         if not all([lat_col, lon_col, time_col]):
             return 500.0
@@ -816,8 +816,8 @@ class StormPlotter:
         df = self.data[group_name].copy()
         cols_lower = {c.lower(): c for c in df.columns}
 
-        lat_col  = next((cols_lower[c] for c in ['lat', 'latitude']  if c in cols_lower), None)
-        lon_col  = next((cols_lower[c] for c in ['lon', 'longitude'] if c in cols_lower), None)
+        lat_col  = next((cols_lower[c] for c in ['lat', 'latitude', 'clat']  if c in cols_lower), None)
+        lon_col  = next((cols_lower[c] for c in ['lon', 'longitude', 'clon'] if c in cols_lower), None)
         time_col = cols_lower.get('time')
         if not all([lat_col, lon_col, time_col, variable in df.columns]):
             return None, None
@@ -928,10 +928,10 @@ class StormPlotter:
         raw_max = float(np.nanmax(range_km)) if len(range_km) > 0 else 200.0
         padded  = sr_max_range if sr_max_range is not None else raw_max
 
-        _candidates = [10, 25, 50, 100, 150, 200, 250, 500]
+        _candidates = [1, 2, 5, 10, 25, 50, 100, 150, 200, 250, 500]
         ring_spacing = next(
             (c for c in _candidates if 3 <= padded / c <= 8),
-            _candidates[-1]
+            _candidates[-1] if padded > 250 else _candidates[0]
         )
         max_range  = np.ceil(padded / ring_spacing) * ring_spacing
         ring_radii = np.arange(ring_spacing, max_range + ring_spacing * 0.01, ring_spacing)
@@ -1122,8 +1122,8 @@ class StormPlotter:
         df = self.data[group_name].copy()
         cols_lower = {c.lower(): c for c in df.columns}
 
-        lat_col  = next((cols_lower[c] for c in ['lat', 'latitude']  if c in cols_lower), None)
-        lon_col  = next((cols_lower[c] for c in ['lon', 'longitude'] if c in cols_lower), None)
+        lat_col  = next((cols_lower[c] for c in ['lat', 'latitude', 'clat']  if c in cols_lower), None)
+        lon_col  = next((cols_lower[c] for c in ['lon', 'longitude', 'clon'] if c in cols_lower), None)
         time_col = cols_lower.get('time')
 
         if rh_z_col and rh_z_col in df.columns:
