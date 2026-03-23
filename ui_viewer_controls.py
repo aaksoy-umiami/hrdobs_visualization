@@ -300,7 +300,7 @@ _VIEWER_STATE_KEYS = [
     'v_lat_range', 'v_lon_range', 'v_time_range', 'v_show_cen', 'v_cen_mode',
     'v_clat', 'v_clon', 'v_track_proj', 'v_vert_range', 'v_color_scale',
     'v_plot_err', 'v_vec_scale', 'v_show_basemap',
-    'v_plot_type', 'v_sr_up',
+    'v_plot_type', 'v_sr_up', 'v_sr_track_grp'
 ]
 
 
@@ -549,17 +549,17 @@ def _render_plot_type_section(data_pack, sel_group, is_3d, h_col=None, p_col=Non
     Renders the Plot Type container.
     Returns the selected plot type, storm relative convention, and track group.
     """
-    _sr_grp = None
-    if 'track_spline_track' in data_pack['data'] and \
-            len(data_pack['data']['track_spline_track']) >= 2:
-        _sr_grp = 'track_spline_track'
-    elif 'track_best_track' in data_pack['data'] and \
-            len(data_pack['data']['track_best_track']) >= 2:
-        _sr_grp = 'track_best_track'
+    # 1. Dynamically find all valid reference tracks (excluding the active group)
+    available_tracks = []
+    track_candidates = ['track_best_track', 'track_spline_track', 'track_vortex_message']
+    for t in track_candidates:
+        if t in data_pack['data'] and len(data_pack['data'][t]) >= 2:
+            # Prevent plotting a track relative to itself
+            if not sel_group or t.lower() != sel_group.lower():
+                available_tracks.append(t)
 
-    _sr_available = (_sr_grp is not None and
-                     'TRACK' not in sel_group.upper() and
-                     not is_3d)
+    # SR is available as long as we have at least 1 alternate track and aren't in 3D mode
+    _sr_available = (len(available_tracks) > 0 and not is_3d)
 
     _PLOT_TYPES = ["Horizontal Cartesian", "Horizontal Storm-Relative", "Radial-Height Profile"]
 
@@ -583,21 +583,46 @@ def _render_plot_type_section(data_pack, sel_group, is_3d, h_col=None, p_col=Non
             key='v_plot_type',
             disabled=False,
             label_visibility="collapsed",
-            help="Storm-Relative and Radial-Height Profile require track_spline_track or "
-                 "track_best_track (≥2 points). Unavailable in 3D mode."
+            help="Storm-Relative and Radial-Height Profile require an alternate track (≥2 points). Unavailable in 3D mode."
         )
 
         is_sr  = (plot_type == "Horizontal Storm-Relative")
         is_rh  = (plot_type == "Radial-Height Profile")
+        requires_track = is_sr or is_rh
 
         if not _sr_available and st.session_state.v_plot_type == "Horizontal Cartesian":
             if is_3d:
                 st.caption("ℹ️ Storm-Relative / Radial-Height unavailable in 3D mode.")
-            elif 'TRACK' in sel_group.upper():
-                st.caption("ℹ️ Storm-Relative / Radial-Height unavailable for track groups.")
-            elif _sr_grp is None:
-                st.caption("ℹ️ Storm-Relative / Radial-Height requires a spline or best track group.")
+            elif len(available_tracks) == 0:
+                st.caption("ℹ️ Storm-Relative / Radial-Height requires an alternate track group (≥2 points).")
 
+        # 2. Render the Reference Track Dropdown
+        def format_track_name(t):
+            if t == 'track_best_track': return 'Best Track'
+            if t == 'track_spline_track': return 'Spline Track'
+            if t == 'track_vortex_message': return 'Vortex Message'
+            return t.replace('_', ' ').title()
+
+        # Set a smart default if a valid track isn't already active in session state
+        if available_tracks:
+            if 'v_sr_track_grp' not in st.session_state or st.session_state.v_sr_track_grp not in available_tracks:
+                if 'track_spline_track' in available_tracks:
+                    st.session_state.v_sr_track_grp = 'track_spline_track'
+                else:
+                    st.session_state.v_sr_track_grp = available_tracks[0]
+
+        sr_track_grp = st.selectbox(
+            "Reference Track",
+            options=available_tracks if available_tracks else ["No alternate track available"],
+            key='v_sr_track_grp' if available_tracks else 'v_sr_track_grp_dummy',
+            disabled=not requires_track or not available_tracks,
+            format_func=lambda x: format_track_name(x) if x in available_tracks else x
+        )
+
+        if not requires_track or not available_tracks:
+            sr_track_grp = None
+
+        # 3. Existing Orientation / Z-Axis logic
         if 'v_sr_up' not in st.session_state:
             st.session_state.v_sr_up = "Relative to North"
 
@@ -635,7 +660,7 @@ def _render_plot_type_section(data_pack, sel_group, is_3d, h_col=None, p_col=Non
             sr_up_convention = st.session_state.get('v_sr_up', "Relative to North")
             rh_z_col = None
 
-    return plot_type, sr_up_convention, _sr_grp, rh_z_col
+    return plot_type, sr_up_convention, sr_track_grp, rh_z_col
 
 
 def _render_plotting_options(data_pack, sel_group, h_col, p_col,
