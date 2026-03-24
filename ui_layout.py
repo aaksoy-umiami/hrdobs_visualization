@@ -307,10 +307,10 @@ def render_header():
     """Renders the top title bar and separator."""
     st.markdown(f"""
     <div style='text-align: center; margin-bottom: 10px;'>
-        <h3 style='color: {CLR_PRIMARY}; margin: 0; padding: 0;
-                   font-size: {FS_TITLE}px;'>
+        <div style='color: {CLR_PRIMARY}; margin: 0; padding: 0;
+                   font-size: {FS_TITLE}px; font-weight: bold;'>
             HRDOBS Dataset Explorer & Visualizer
-        </h3>
+        </div>
         <p style='font-size: {FS_SUBTITLE}px; color: {CLR_SUBTLE}; margin: 0;'>
             Search, filter, map, and analyze AI-ready tropical cyclone observations
         </p>
