@@ -326,6 +326,6 @@ def render_footer():
         f"<div style='text-align: center; color: {CLR_SUBTLE}; "
         f"font-size: {FS_FOOTER}px;'>"
         f"© {datetime.now().year} Altug Aksoy  |  "
-        f"University of Miami/Cooperative Inst. for Marine and Atmospheric Sci.</div>",
+        f"University of Miami / Rosenstiel School / Cooperative Institute for Marine and Atmospheric Studies</div>",
         unsafe_allow_html=True
     )
