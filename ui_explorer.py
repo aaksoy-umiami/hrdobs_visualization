@@ -24,7 +24,7 @@ from data_utils import load_inventory_db
 from ui_explorer_controls import render_explorer_controls, get_dropdown_mask, MS_TO_KTS
 from ui_components import spacer
 from ui_explorer_table import display_explorer_table, display_summary_table
-
+from ui_explorer_plots import render_explorer_summary_plots
 
 def render_explorer_tab():
 
@@ -81,22 +81,33 @@ def render_explorer_tab():
 
     final_df['Lon'] = final_df['Lon'].abs()
 
-    # ------------------------------------------------------------------
-    # Summary Table + Table controls
-    # ------------------------------------------------------------------
     spacer('lg')
 
-    # Render the collapsed Summary Table expander just before controls
-    with st.expander("📊 View Summary of Filtered Results", expanded=False):
+    # ------------------------------------------------------------------
+    # 1. View Summary Table of Filtered Results
+    # ------------------------------------------------------------------
+    with st.expander("📊 View Summary Table of Filtered Results", expanded=False):
         display_summary_table(final_df, intent.unit)
 
+    # ------------------------------------------------------------------
+    # 2. View Summary Graphics of Filtered Results
+    # ------------------------------------------------------------------
+    render_explorer_summary_plots(final_df, intent.unit)
+
+    # ------------------------------------------------------------------
+    # 3. Results Count
+    # ------------------------------------------------------------------
+    spacer('md')
+    st.markdown(f"#### 🔎 Found **{len(final_df)}** matching files")
+
+    # ------------------------------------------------------------------
+    # 4. Table Controls
+    # ------------------------------------------------------------------
     def reset_table_sort():
         st.session_state.ui_sort_col   = 'Year'
         st.session_state.ui_sort_order = 'Ascending'
 
     with st.container(border=True):
-        st.markdown("#### 📄 Table Controls")
-
         sort_options = {
             "Year": "Year", "Storm Name": "Storm", "Basin": "Basin",
             "Cycle (Time)": "Cycle_Raw", "Latitude": "Lat", "Longitude": "Lon",
@@ -107,9 +118,9 @@ def render_explorer_tab():
             if g in final_df.columns:
                 sort_options[g.replace('_', ' ').title()] = g
 
-        sc1, sc2, sc3, sc4, sc5 = st.columns([1.6, 1.35, 0.7, 0.9, 1.5])
+        sc1, sc2, sc3, sc4, sc5 = st.columns([1.6, 1.5, 1.1, 0.5, 1.5])
         with sc1:
-            st.selectbox("Sort By Column:", list(sort_options.keys()),
+            st.selectbox("Sort Table By Column:", list(sort_options.keys()),
                          key="ui_sort_col")
         with sc2:
             st.radio("Sort Direction:", ["Ascending", "Descending"],
@@ -144,13 +155,9 @@ def render_explorer_tab():
                 mime='text/csv', type="secondary", width="stretch",
             )
 
-        # Table button and label styles are defined globally in ui_layout.py
-
     # ------------------------------------------------------------------
-    # Results count + table
+    # 5. Full Styled Table
     # ------------------------------------------------------------------
-    spacer('md')
-    st.markdown(f"#### 🔎 Found **{len(final_df)}** matching files")
-
+    spacer('sm')
     display_explorer_table(final_df, intent.unit, sort_col_internal, is_asc)
-  
+    

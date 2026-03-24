@@ -53,22 +53,23 @@ from datetime import datetime
 # Colours
 CLR_PRIMARY   = "#000000"
 CLR_ACCENT    = "#555555"
-CLR_MUTED     = "#999999"   # unified: was both #999 and #a0a0a0 in different files
+CLR_MUTED     = "#999999"   
 CLR_SUBTLE    = "#666666"
 CLR_SUCCESS   = "#0c7b20"
 CLR_EXTRA     = "#005bb5"
 CLR_BG_HEADER = "#f0f2f6"
+
 # Alternate Button Styles (Select All / Deselect All)
-CLR_BTN_LIGHT_BG     = "#e4e6eb"   # light-gray shading
-CLR_BTN_LIGHT_BORDER = "#888888"   # dark-gray border
-CLR_BTN_LIGHT_TEXT   = "#333333"   # dark text
+CLR_BTN_LIGHT_BG     = "#e4e6eb"   
+CLR_BTN_LIGHT_BORDER = "#888888"   
+CLR_BTN_LIGHT_TEXT   = "#333333"   
 
 # Font sizes (integer px values for easy arithmetic; CSS strings built below)
 FS_LABEL    = 16
 FS_BODY     = 13
 FS_BUTTON   = 12
-FS_MICRO    = 11   # intentionally smaller: auto-fit domain button labels
-FS_TABLE    = 14   # slightly larger than body for HTML table readability
+FS_MICRO    = 11   
+FS_TABLE    = 14   
 FS_TITLE    = 40
 FS_SUBTITLE = 20
 FS_FOOTER   = 12
@@ -80,7 +81,14 @@ FS_PLOT_TICK  = 14
 
 # Plotly colors
 CLR_PLOT_BG   = "#ffffff"
-CLR_PLOT_GRID = "#e0e0e0" # light gray
+CLR_PLOT_GRID = "#e0e0e0"
+
+# Specific plot heights and margins for the Explorer Summary plots
+PLOT_HEIGHT_MAP = 400
+PLOT_MARGINS_MAP = dict(l=40, r=40, t=50, b=30)
+
+PLOT_HEIGHT_SUMMARY = 460
+PLOT_MARGINS_SUMMARY = dict(l=50, r=20, t=40, b=120)
 
 # Number of ticks/grid lines to plot on 2d/3d plots
 TARGET_PLOT_TICKS = 15
@@ -329,3 +337,4 @@ def render_footer():
         f"University of Miami / Rosenstiel School / Cooperative Institute for Marine and Atmospheric Studies</div>",
         unsafe_allow_html=True
     )
+    

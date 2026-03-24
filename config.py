@@ -3,7 +3,6 @@
 config.py
 ----------
 Global configuration parameters shared by all other functions.
-
 """
 
 EXPECTED_GROUPS = [
@@ -63,8 +62,6 @@ GLOBAL_VAR_CONFIG = {
 }
 
 # --- AUTOMATIC UNIT CONVERSIONS ---
-# The data loader will intercept these units, multiply the data by the factor,
-# and overwrite the unit string so the rest of the app displays it correctly.
 UNIT_CONVERSIONS = {
     'Pa': {'multiplier': 0.01, 'new_unit': 'hPa'},
     'Pascals': {'multiplier': 0.01, 'new_unit': 'hPa'},
@@ -73,5 +70,44 @@ UNIT_CONVERSIONS = {
     'kg kg**-1': {'multiplier': 1000.0, 'new_unit': 'g/kg'}
 }
 
+# --- CONSTANTS ---
+MS_TO_KTS = 1.94384
+
 # --- USER INTERFACE DEFAULTS ---
 DEFAULT_HIST_BINS = 50
+
+# --- SUMMARY PLOT BOUNDARIES ---
+# Fixed domain for the summary map matching manuscript bounds
+DOMAIN_LAT_MIN = 10.0
+DOMAIN_LAT_MAX = 50.0
+DOMAIN_LON_MIN = -120.0
+DOMAIN_LON_MAX = -20.0
+
+# ---------------------------------------------------------------------
+# GLOBAL CATEGORY & PLATFORM STYLING
+# ---------------------------------------------------------------------
+
+# Colors matched to manuscript with enhanced contrast for lighter variants
+CAT_COLORS = {
+    'H5': '#ef3d25',      
+    'H4': '#fcae91',      
+    'H3': '#fee609',      
+    'H2': '#fff599',      
+    'H1': '#11aa4b',      
+    'TS': '#7be09b',      
+    'TD': '#42c7f4',      
+    'SS': '#ffffff',      
+    'LO': '#d3d3d3',      
+    'EX': '#eec1db',      
+    'Unknown': '#ffffff'  
+}
+
+CAT_ORDER = ['SS', 'LO', 'TD', 'TS', 'H1', 'H2', 'H3', 'H4', 'H5', 'EX', 'Unknown']
+
+PLATFORM_COLORS = {
+    'NOAA P-3': 'navy',
+    'NOAA G-IV': '#66FF66',
+    'Air Force': '#B0B0B0',
+    'NASA Global Hawk': 'darkred',
+    'Tracks': '#FFFF99'
+}
