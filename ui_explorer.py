@@ -86,7 +86,7 @@ def render_explorer_tab():
     # ------------------------------------------------------------------
     # 1. View Summary Table of Filtered Results
     # ------------------------------------------------------------------
-    with st.expander("📊 View Summary Table of Filtered Results", expanded=False):
+    with st.expander("📋 View Summary Table of Filtered Results", expanded=False):
         display_summary_table(final_df, intent.unit)
 
     # ------------------------------------------------------------------
@@ -160,4 +160,3 @@ def render_explorer_tab():
     # ------------------------------------------------------------------
     spacer('sm')
     display_explorer_table(final_df, intent.unit, sort_col_internal, is_asc)
-    
