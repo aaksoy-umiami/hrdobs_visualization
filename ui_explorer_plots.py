@@ -17,7 +17,7 @@ from ui_layout import (
     PLOT_HEIGHT_SUMMARY, PLOT_MARGINS_SUMMARY
 )
 from config import (
-    CAT_COLORS, CAT_ORDER, PLATFORM_COLORS, MS_TO_KTS,
+    CAT_COLORS, CAT_ORDER, CAT_FULL_NAMES, PLATFORM_COLORS, MS_TO_KTS,
     DOMAIN_LAT_MIN, DOMAIN_LAT_MAX, DOMAIN_LON_MIN, DOMAIN_LON_MAX
 )
 
@@ -147,7 +147,8 @@ def render_explorer_summary_plots(df: pd.DataFrame, unit: str):
             active_cats    = [cat for cat in CAT_ORDER
                               if cat != 'Unknown' or counts.get(cat, 0) > 0]
             ordered_counts = [counts.get(cat, 0) for cat in active_cats]
-            hover_texts_hist = [f"<b>{cat}</b><br>Cycles: {int(cnt):,}" for cat, cnt in zip(active_cats, ordered_counts)]
+            hover_texts_hist = [f"<b>{CAT_FULL_NAMES.get(cat, cat)}</b><br>Cycles: {int(cnt):,}"
+                                 for cat, cnt in zip(active_cats, ordered_counts)]
 
             fig_hist = go.Figure(data=[
                 go.Bar(

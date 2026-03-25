@@ -106,6 +106,22 @@ CAT_COLORS = {
 
 CAT_ORDER = ['WV', 'DB', 'TD', 'TS', 'H1', 'H2', 'H3', 'H4', 'H5', 'EX', 'LO', 'SS', 'Unknown']
 
+CAT_FULL_NAMES = {
+    'WV': 'Tropical Wave',
+    'DB': 'Disturbance',
+    'TD': 'Tropical Depression',
+    'TS': 'Tropical Storm',
+    'H1': 'Hurricane Cat 1',
+    'H2': 'Hurricane Cat 2',
+    'H3': 'Hurricane Cat 3',
+    'H4': 'Hurricane Cat 4',
+    'H5': 'Hurricane Cat 5',
+    'EX': 'Extratropical',
+    'LO': 'Remnant Low',
+    'SS': 'Subtropical Storm',
+    'Unknown': 'Unknown',
+}
+
 PLATFORM_COLORS = {
     'NOAA P-3': 'navy',
     'NOAA G-IV': '#66FF66',
