@@ -89,20 +89,22 @@ DOMAIN_LON_MAX = -20.0
 
 # Colors matched to manuscript with enhanced contrast for lighter variants
 CAT_COLORS = {
-    'H5': '#ef3d25',      
-    'H4': '#fcae91',      
-    'H3': '#fee609',      
-    'H2': '#fff599',      
-    'H1': '#11aa4b',      
-    'TS': '#7be09b',      
-    'TD': '#42c7f4',      
-    'SS': '#ffffff',      
-    'LO': '#d3d3d3',      
-    'EX': '#eec1db',      
-    'Unknown': '#ffffff'  
+    'WV': '#e0e0e0',      # Tropical Wave — lightest grey
+    'DB': '#b0b0b0',      # Disturbance — mid grey
+    'TD': '#42c7f4',      # Tropical Depression — light blue
+    'TS': '#7be09b',      # Tropical Storm — light green
+    'H1': '#11aa4b',      # Hurricane Cat 1 — green
+    'H2': '#fff599',      # Hurricane Cat 2 — light yellow
+    'H3': '#fee609',      # Hurricane Cat 3 — yellow
+    'H4': '#fcae91',      # Hurricane Cat 4 — light salmon
+    'H5': '#ef3d25',      # Hurricane Cat 5 — deep red
+    'EX': '#eec1db',      # Extratropical — light pink
+    'LO': '#fce4f0',      # Remnant Low — very light pink
+    'SS': '#ffffff',      # Subtropical Storm — white
+    'Unknown': '#ffffff'  # Unknown — white
 }
 
-CAT_ORDER = ['SS', 'LO', 'TD', 'TS', 'H1', 'H2', 'H3', 'H4', 'H5', 'EX', 'Unknown']
+CAT_ORDER = ['WV', 'DB', 'TD', 'TS', 'H1', 'H2', 'H3', 'H4', 'H5', 'EX', 'LO', 'SS', 'Unknown']
 
 PLATFORM_COLORS = {
     'NOAA P-3': 'navy',

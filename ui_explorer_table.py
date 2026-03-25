@@ -28,7 +28,7 @@ def display_summary_table(final_df, unit):
 
     # Natural lifecycle order for categories
     cat_order = {c: i for i, c in enumerate(
-        ['DB', 'TD', 'TS', 'H1', 'H2', 'H3', 'H4', 'H5', 'EX', 'LO', 'WV', 'Unknown']
+        ['WV', 'DB', 'TD', 'TS', 'H1', 'H2', 'H3', 'H4', 'H5', 'EX', 'LO', 'SS', 'Unknown']
     )}
 
     summary_data = []
