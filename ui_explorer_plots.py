@@ -143,14 +143,17 @@ def render_explorer_summary_plots(df: pd.DataFrame, unit: str):
         # --- Plot 1: Histogram of Categories ---
         with c1:
             counts = plot_df['TC_Category'].value_counts() if 'TC_Category' in plot_df.columns else pd.Series()
-            ordered_counts = [counts.get(cat, 0) for cat in CAT_ORDER]
-            hover_texts_hist = [f"<b>{cat}</b><br>Cycles: {int(cnt):,}" for cat, cnt in zip(CAT_ORDER, ordered_counts)]
-            
+            # Show all categories except 'Unknown' when it has zero count
+            active_cats    = [cat for cat in CAT_ORDER
+                              if cat != 'Unknown' or counts.get(cat, 0) > 0]
+            ordered_counts = [counts.get(cat, 0) for cat in active_cats]
+            hover_texts_hist = [f"<b>{cat}</b><br>Cycles: {int(cnt):,}" for cat, cnt in zip(active_cats, ordered_counts)]
+
             fig_hist = go.Figure(data=[
                 go.Bar(
-                    x=CAT_ORDER, y=ordered_counts, 
-                    marker_color=[CAT_COLORS.get(cat, '#ffffff') for cat in CAT_ORDER],
-                    marker_line=dict(width=1, color='black'), 
+                    x=active_cats, y=ordered_counts,
+                    marker_color=[CAT_COLORS.get(cat, '#ffffff') for cat in active_cats],
+                    marker_line=dict(width=1, color='black'),
                     hovertext=hover_texts_hist, hoverinfo='text'
                 )
             ])
