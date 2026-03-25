@@ -189,6 +189,8 @@ def _render_usage():
     **Quick Start:**
     1. **Filter** the inventory using the sidebar (select specific storm names, years, basins, or observation platforms).
     2. **Refine** the table by toggling specific variable groups on or off.
+       - **View Summary Table of Filtered Results:** Shows a storm-based summary table for the filters applied.
+       - **View Summary Graphics of Filtered Results:** Displays summary graphics based on the filters applied.
     3. **Download** the customized list as a CSV file to your local computer for external reference.
 
     ---
