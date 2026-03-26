@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any
 from config import EXPECTED_GROUPS, EXPECTED_META
 from data_utils import load_data_from_h5, decode_metadata, compute_global_domain, compute_vert_bounds
 from ui_layout import CLR_MUTED, CLR_SUCCESS, CLR_EXTRA, FS_TABLE, FS_BODY
-from ui_components import section_divider, spacer, sidebar_label, init_state, sync_namespace
+from ui_components import section_divider, spacer, sidebar_label, init_state, sync_namespace, consume_flag
 from ui_viewer_file import render_file_upload_section
 
 @dataclass
@@ -299,7 +299,7 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
 
         if consume_flag('_force_thinning'):
             st.session_state.v_apply_thinning = True
-            st.session_state.v_thin_pct = st.session_state.pop('_force_thin_pct', 50)
+            st.session_state.v_thin_pct = consume_flag('_force_thin_pct') or 50
 
         init_state('v_apply_thinning', False)
         apply_thinning = st.checkbox("Apply thinning?", key='v_apply_thinning')
@@ -521,7 +521,6 @@ def render_viewer_controls(plotter) -> ViewerIntent:
     intent.sr_track_grp      = sr_track_grp
     intent.rh_z_col          = rh_z_col
 
-    # Using imported ui_viewer_domain locally to avoid circular dependency
     from ui_viewer_domain import _render_domain_section, _render_time_section
     
     (domain_bounds, convert_dom, vert_range, domain_z_col) = _render_domain_section(

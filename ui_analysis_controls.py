@@ -119,16 +119,21 @@ def render_analysis_controls() -> AnalysisIntent:
     from plotter import StormPlotter
     plotter = StormPlotter(data_pack['data'], data_pack['track'], data_pack['meta'], data_pack['var_attrs'])
 
-    with st.sidebar.container(border=True):
-        st.markdown("### ⚙️ Analysis Type")
-        init_state('a_analysis_type', "Histogram Analysis (1D)")
-        analysis_type = st.selectbox("Select Analysis Mode", ["Histogram Analysis (1D)", "Histogram Analysis (2D)", "Scatter Analysis"], key='a_analysis_type')
-        intent.analysis_type = analysis_type
+    # Get the current analysis type from session state so we can pass it to the Variable section
+    init_state('a_analysis_type', "Histogram Analysis (1D)")
+    current_analysis_type = st.session_state.a_analysis_type
         
-    sel_group, variable, coord_var, scatter_var_list = _render_analysis_variable_section(data_pack, plotter, analysis_type)
+    # Render the Variable Section FIRST visually
+    sel_group, variable, coord_var, scatter_var_list = _render_analysis_variable_section(data_pack, plotter, current_analysis_type)
     intent.sel_group = sel_group
     intent.variable = variable
     intent.coord_var = coord_var
+
+    # Render the Analysis Type Section SECOND visually
+    with st.sidebar.container(border=True):
+        st.markdown("### ⚙️ Analysis Type")
+        analysis_type = st.selectbox("Select Analysis Mode", ["Histogram Analysis (1D)", "Histogram Analysis (2D)", "Scatter Analysis"], key='a_analysis_type')
+        intent.analysis_type = analysis_type
         
     with st.sidebar.container(border=True):
         st.markdown("### ⚙️ Plotting Options")
