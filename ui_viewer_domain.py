@@ -19,13 +19,14 @@ from data_utils import decode_metadata, compute_global_domain, compute_vert_boun
 from ui_components import section_divider, sidebar_label, init_state, consume_flag
 
 def _render_domain_section(data_pack, sel_group, df_sel, options,
-                            target_col_3d, is_3d,
-                            default_lat_min, default_lat_max,
-                            default_lon_min, default_lon_max,
-                            plot_type="Horizontal Cartesian",
-                            sr_track_grp=None, plotter=None):
+                           target_col, target_col_3d, is_3d,
+                           default_lat_min, default_lat_max,
+                           default_lon_min, default_lon_max,
+                           plot_type="Horizontal Cartesian",
+                           sr_track_grp=None, plotter=None, rh_z_col=None):
 
     is_sr = (plot_type == "Horizontal Storm-Relative")
+    is_rh = (plot_type == "Radial-Height Profile")
 
     with st.sidebar.container(border=True):
         st.markdown("### 🗺️ Plot Domain Limits")
@@ -59,7 +60,7 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
             if 'v_vert_range' in st.session_state:
                 del st.session_state['v_vert_range']
 
-        if is_sr:
+        if is_sr or is_rh:
             sr_default_max = DEFAULT_SR_MAX_RANGE
             if plotter is not None and sr_track_grp:
                 try:
@@ -109,9 +110,13 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
 
         vert_range  = None
         convert_dom = False
-        domain_z_col = target_col_3d
 
-        if options and df_sel is not None:
+        if is_rh and rh_z_col:
+            domain_z_col = rh_z_col
+        else:
+            domain_z_col = st.session_state.get('v_vert_coord') or (target_col if target_col else target_col_3d)
+
+        if options and df_sel is not None and domain_z_col:
             v_unit_dom = decode_metadata(data_pack['var_attrs'].get(sel_group, {}).get(domain_z_col, {}).get('units', ''))
             convert_dom = 'Pa' in v_unit_dom and 'hPa' not in v_unit_dom
             if convert_dom: v_unit_dom = 'hPa'
@@ -153,7 +158,7 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
 
         with b1:
             if st.button("🔍 Auto-fit domain", width="stretch"):
-                if is_sr:
+                if is_sr or is_rh:
                     if plotter is not None and sr_track_grp:
                         try:
                             temp_df = df_sel.copy()
