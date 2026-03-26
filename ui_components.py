@@ -2,27 +2,12 @@
 """
 ui_components.py
 ----------------
-Reusable Streamlit widget helpers.
+Reusable Streamlit widget helpers and state management utilities.
 
 Every function here encapsulates a recurring visual pattern so that call
 sites stay concise and the visual behavior is defined in exactly one place.
 All style values are imported from ui_layout rather than hardcoded, so
 changes to the design tokens automatically propagate here.
-
-Public API
-----------
-section_divider()
-    Thin horizontal rule used to separate sections within a sidebar container.
-
-spacer(size)
-    Vertical whitespace.  size='sm' (5 px) | 'md' (8 px) | 'lg' (28 px).
-
-sidebar_label(text, enabled, size)
-    Inline HTML label rendered above or beside a Streamlit widget when the
-    native label would be hidden.  Supports enabled/disabled color states.
-
-multiselect_with_controls(label, options, key)
-    st.multiselect with Select All / Deselect All buttons underneath.
 """
 
 import streamlit as st
@@ -46,22 +31,13 @@ def section_divider():
 # ---------------------------------------------------------------------------
 
 _SPACER_SIZES = {
-    'sm':  5,   # checkbox-align gap (before a checkbox row)
-    'md':  8,   # light breathing room
-    'lg':  28,  # button-align gap (before a button that needs to line up with a widget)
+    'sm':  5,   
+    'md':  8,   
+    'lg':  28,  
 }
 
 def spacer(size: str = 'sm'):
-    """
-    Vertical whitespace.
-
-    Parameters
-    ----------
-    size : 'sm' | 'md' | 'lg'
-        sm =  5 px  — used to align checkboxes with adjacent widgets
-        md =  8 px  — general light breathing room
-        lg = 28 px  — used to align buttons with adjacent select/radio widgets
-    """
+    """Vertical whitespace."""
     px = _SPACER_SIZES.get(size, _SPACER_SIZES['sm'])
     st.markdown(
         f"<div style='height: {px}px;'></div>",
@@ -74,18 +50,7 @@ def spacer(size: str = 'sm'):
 # ---------------------------------------------------------------------------
 
 def sidebar_label(text: str, enabled: bool = True, size: str = 'body'):
-    """
-    Render an inline HTML label above or beside a Streamlit widget.
-
-    Use this whenever st.slider / st.selectbox label_visibility="collapsed"
-    is used and a custom label is needed in its place.
-
-    Parameters
-    ----------
-    text    : Label text (plain string — no HTML).
-    enabled : When False, renders in the muted color to signal a disabled state.
-    size    : 'body' (13 px, font-weight 500) | 'label' (16 px, normal weight)
-    """
+    """Render an inline HTML label above or beside a Streamlit widget."""
     color = "inherit" if enabled else CLR_MUTED
 
     if size == 'label':
@@ -107,19 +72,7 @@ def sidebar_label(text: str, enabled: bool = True, size: str = 'body'):
 # ---------------------------------------------------------------------------
 
 def multiselect_with_controls(label: str, options: list, key: str):
-    """
-    Render a st.multiselect followed by compact Select All / Deselect All buttons.
-
-    The current selection is clamped to the available options before rendering
-    so stale selections from a previous filter state are silently dropped.
-
-    Parameters
-    ----------
-    label   : Widget label shown above the multiselect.
-    options : Available choices (already sorted/filtered by the caller).
-    key     : Streamlit session state key for the multiselect value.
-    """
-    # Clamp stale selections to the current available options
+    """Render a st.multiselect followed by compact Select All / Deselect All buttons."""
     if key in st.session_state:
         st.session_state[key] = [
             x for x in st.session_state[key] if x in options
@@ -143,4 +96,28 @@ def multiselect_with_controls(label: str, options: list, key: str):
         on_click=lambda k=key: st.session_state.update({k: []}),
         key=f"da_{key}"
     )
-    
+
+# ---------------------------------------------------------------------------
+# State Management Utilities
+# ---------------------------------------------------------------------------
+
+def init_state(key: str, default_value: any):
+    """Safely initializes a session state key if it doesn't exist."""
+    if key not in st.session_state:
+        st.session_state[key] = default_value
+
+def consume_flag(key: str) -> bool:
+    """Reads and removes a boolean flag from session state, returning False if missing."""
+    return st.session_state.pop(key, False)
+
+def sync_namespace(prefix: str, dict_key: str):
+    """
+    Packs all session state variables starting with `prefix` into a persistent 
+    dictionary at `dict_key`. Useful for cross-tab persistence.
+    """
+    if dict_key not in st.session_state:
+        st.session_state[dict_key] = {}
+    for k in list(st.session_state.keys()):
+        if k.startswith(prefix):
+            st.session_state[dict_key][k] = st.session_state[k]
+            

@@ -9,7 +9,7 @@ It also includes a summary table renderer that groups active results by individu
 
 import pandas as pd
 import streamlit as st
-from config import EXPECTED_GROUPS
+from config import EXPECTED_GROUPS, CAT_ORDER, MS_TO_KTS
 
 def display_summary_table(final_df, unit):
     """Formats and renders a summary table grouped by storm."""
@@ -17,7 +17,6 @@ def display_summary_table(final_df, unit):
         st.info("No data to summarize.")
         return
 
-    MS_TO_KTS = 1.94384
     mult = MS_TO_KTS if unit == "knots" else 1.0
 
     df = final_df.copy()
@@ -27,9 +26,7 @@ def display_summary_table(final_df, unit):
     df['Storm_ID'] = extracted_id.str.upper().fillna(df['Storm'])
 
     # Natural lifecycle order for categories
-    cat_order = {c: i for i, c in enumerate(
-        ['WV', 'DB', 'TD', 'TS', 'H1', 'H2', 'H3', 'H4', 'H5', 'EX', 'LO', 'SS', 'Unknown']
-    )}
+    cat_order = {c: i for i, c in enumerate(CAT_ORDER)}
 
     summary_data = []
 
@@ -170,7 +167,6 @@ def display_summary_table(final_df, unit):
 
 def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
     """Formats and renders the Pandas dataframe as a custom HTML block."""
-    MS_TO_KTS = 1.94384
     
     final_df['Storm_Display'] = final_df.apply(lambda x: f"{x['Storm']}|||{x['Constructed_File_Name']}", axis=1)
 

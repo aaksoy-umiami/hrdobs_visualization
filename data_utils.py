@@ -7,8 +7,13 @@ import tempfile
 import os
 import re
 import json
+import math
+from datetime import datetime, timezone
 import streamlit as st
-from config import EXPECTED_GROUPS
+from config import (
+    EXPECTED_GROUPS, UNIT_CONVERSIONS, EARTH_R_KM, DEFAULT_SFMR_ALTITUDE,
+    GLOBAL_LAT_MIN, GLOBAL_LAT_MAX, GLOBAL_LON_MIN, GLOBAL_LON_MAX
+)
 
 def decode_metadata(val):
     """
@@ -23,7 +28,6 @@ def decode_metadata(val):
             val = str(val)
     result = str(val).strip()
     
-    # Remove null padding and strip any remaining b'...' wrapper artifacts
     result = result.rstrip('\x00').strip()
     if result.startswith("b'") and result.endswith("'"):
         result = result[2:-1]
@@ -63,7 +67,6 @@ def load_inventory_db(db_path):
         df.loc[df['MSLP_hPa'] > 2000, 'MSLP_hPa'] /= 100.0
             
     df['TC_Category'] = df['TC_Category'].fillna("Unknown").astype(str).str.replace(r'[\[\]\'"]', '', regex=True)
-    # NaN string from conversion script → Unknown for display
     df['TC_Category'] = df['TC_Category'].replace('NaN', 'Unknown')
     
     df['Basin'] = df['Filename'].apply(get_basin_from_filename)
@@ -111,74 +114,52 @@ def load_data_from_h5(file_bytes):
     def _find_center_in_attrs(attrs):
         if 'center_from_tc_vitals' in attrs:
             raw_val = attrs['center_from_tc_vitals']
-            
-            # Check if the value is a numeric array or list rather than a string
             if hasattr(raw_val, '__iter__') and not isinstance(raw_val, (str, bytes)):
                 try:
                     return float(raw_val[0]), float(raw_val[1])
                 except (ValueError, TypeError, IndexError):
                     pass
-            
             val_str = _safe_val(raw_val).upper()
-            
-            # Attempt to parse as a stringified numeric vector or list (e.g., "[20.5, -60.2]")
-            import re
             m = re.search(r'\[?\s*([-+]?\d*\.?\d+)[\s,]+([-+]?\d*\.?\d+)\s*\]?', val_str)
             if m:
                 lat_val = float(m.group(1))
                 lon_val = float(m.group(2))
                 if lon_val > 180: lon_val -= 360
-                if -90 <= lat_val <= 90 and -180 <= lon_val <= 180:
+                if GLOBAL_LAT_MIN <= lat_val <= GLOBAL_LAT_MAX and GLOBAL_LON_MIN <= lon_val <= GLOBAL_LON_MAX:
                     return lat_val, lon_val
 
-            # Fallback for legacy string coordinate formats (e.g., "15.0N 75.5W")
             coords = []
             used = set()
-            for m in re.finditer(
-                r'([-+]?\d+(?:\.\d+)?)\s*([NSEW])|([NSEW])\s*([-+]?\d+(?:\.\d+)?)',
-                val_str
-            ):
-                if m.start() in used:
-                    continue
+            for m in re.finditer(r'([-+]?\d+(?:\.\d+)?)\s*([NSEW])|([NSEW])\s*([-+]?\d+(?:\.\d+)?)', val_str):
+                if m.start() in used: continue
                 used.add(m.start())
-                if m.group(1):          
-                    coords.append((float(m.group(1)), m.group(2)))
-                else:                   
-                    coords.append((float(m.group(4)), m.group(3)))
+                if m.group(1): coords.append((float(m.group(1)), m.group(2)))
+                else:          coords.append((float(m.group(4)), m.group(3)))
             if len(coords) >= 2:
                 lat_val = coords[0][0] * (-1 if coords[0][1] == 'S' else 1)
                 lon_val = coords[1][0] * (-1 if coords[1][1] == 'W' else 1)
                 if lon_val > 180: lon_val -= 360
-                if -90 <= lat_val <= 90 and -180 <= lon_val <= 180:
+                if GLOBAL_LAT_MIN <= lat_val <= GLOBAL_LAT_MAX and GLOBAL_LON_MIN <= lon_val <= GLOBAL_LON_MAX:
                     return lat_val, lon_val
                 
-        # Fallback to computing the average of the geospatial bounding box
         try:
             attr_map = {k.lower(): k for k in attrs.keys()}
-            
             def get_bound(key_name):
-                if key_name in attr_map:
-                    val = _safe_float(attrs[attr_map[key_name]])
-                    return val
+                if key_name in attr_map: return _safe_float(attrs[attr_map[key_name]])
                 return None
-                
             lat_min = get_bound('geospatial_lat_min')
             lat_max = get_bound('geospatial_lat_max')
             lon_min = get_bound('geospatial_lon_min')
             lon_max = get_bound('geospatial_lon_max')
-            
             if all(v is not None for v in [lat_min, lat_max, lon_min, lon_max]):
                 lat_avg = (lat_min + lat_max) / 2.0
                 lon_avg = (lon_min + lon_max) / 2.0
-                
                 if lon_avg > 180: lon_avg -= 360
-                
-                if -90 <= lat_avg <= 90 and -180 <= lon_avg <= 180:
+                if GLOBAL_LAT_MIN <= lat_avg <= GLOBAL_LAT_MAX and GLOBAL_LON_MIN <= lon_avg <= GLOBAL_LON_MAX:
                     return lat_avg, lon_avg
         except Exception:
             pass
 
-        # Return None if no valid center or bounds were found
         return None
 
     with tempfile.NamedTemporaryFile(delete=False, suffix='.hdf5') as tmp_file:
@@ -225,14 +206,10 @@ def load_data_from_h5(file_bytes):
                 if c.lower() in ['lon', 'longitude', 'ilon', 'clon']: rename_map[c] = 'lon'
             if rename_map: df.rename(columns=rename_map, inplace=True)
 
-            # Apply global unit conversions
-            from config import UNIT_CONVERSIONS
             for dset in df.columns:
                 if dset in group_var_attrs:
                     u_raw = group_var_attrs[dset].get('units', '')
                     u_str = _safe_val(u_raw).strip().lower()
-                    
-                    # Match against lowercase keys in the configuration
                     for target_unit, rule in UNIT_CONVERSIONS.items():
                         if u_str == target_unit.lower():
                             df[dset] = df[dset] * rule['multiplier']
@@ -258,4 +235,249 @@ def load_data_from_h5(file_bytes):
         metadata['bounds'] = [clon-3.0, clon+3.0, clat-3.0, clat+3.0]
         
     return {'data': data_dict, 'track': track_df, 'meta': metadata, 'var_attrs': var_attrs}
+
+def inject_derived_fields(raw_data_pack):
+    """
+    Post-load enrichment: adds SFMR altitude, derived wind speeds,
+    propagated error estimates, vector dummy variables, and distance
+    from storm center in-place.
+    """
+    def _find_track_grp(data):
+        for pref in ('track_spline_track', 'track_best_track'):
+            if pref in data: return pref
+        for k in data:
+            if k.startswith('track_'): return k
+        return None
+
+    def _ts(v):
+        try:
+            dt = datetime.strptime(f"{v:.0f}", '%Y%m%d%H%M%S')
+            return dt.replace(tzinfo=timezone.utc).timestamp()
+        except Exception:
+            return np.nan
+
+    track_grp_name = _find_track_grp(raw_data_pack['data'])
+    track_epochs = track_lats = track_lons = None
+
+    if track_grp_name is not None:
+        tr = raw_data_pack['data'][track_grp_name]
+        tcols = {c.lower(): c for c in tr.columns}
+        t_col   = tcols.get('time')
+        lat_col = next((tcols[c] for c in ['lat', 'latitude', 'clat'] if c in tcols), None)
+        lon_col = next((tcols[c] for c in ['lon', 'longitude', 'clon'] if c in tcols), None)
+        if all([t_col, lat_col, lon_col]):
+            te = np.array([_ts(v) for v in tr[t_col].values])
+            valid_te = np.isfinite(te)
+            if valid_te.sum() >= 2:   
+                order = np.argsort(te[valid_te])
+                track_epochs = te[valid_te][order]
+                track_lats   = tr[lat_col].values.astype(float)[valid_te][order]
+                track_lons   = tr[lon_col].values.astype(float)[valid_te][order]
+
+    for grp in raw_data_pack['data'].keys():
+        df_grp = raw_data_pack['data'][grp]
+        if grp not in raw_data_pack['var_attrs']:
+            raw_data_pack['var_attrs'][grp] = {}
+
+        if (track_epochs is not None and not grp.startswith('track_')):
+            gcols = {c.lower(): c for c in df_grp.columns}
+            lat_c  = next((gcols[c] for c in ['lat', 'latitude']  if c in gcols), None)
+            lon_c  = next((gcols[c] for c in ['lon', 'longitude'] if c in gcols), None)
+            time_c = gcols.get('time')
+            if lat_c and lon_c and time_c:
+                obs_epochs = np.array([_ts(v) for v in df_grp[time_c].values])
+                cen_lats = np.interp(obs_epochs, track_epochs, track_lats)
+                cen_lons = np.interp(obs_epochs, track_epochs, track_lons)
+                dlat     = np.radians(df_grp[lat_c].values.astype(float) - cen_lats)
+                dlon     = np.radians(df_grp[lon_c].values.astype(float) - cen_lons)
+                mean_lat = np.radians((df_grp[lat_c].values.astype(float) + cen_lats) / 2.0)
+                x_km = EARTH_R_KM * dlon * np.cos(mean_lat)
+                y_km = EARTH_R_KM * dlat
+                dist = np.sqrt(x_km**2 + y_km**2)
+                nan_mask = (~np.isfinite(obs_epochs) | df_grp[lat_c].isna().values | df_grp[lon_c].isna().values)
+                dist[nan_mask] = np.nan
+                df_grp['dist_from_center'] = dist
+                raw_data_pack['var_attrs'][grp]['dist_from_center'] = {
+                    'units': 'km', 'long_name': 'Distance from Storm Center (Computed)',
+                }
+
+        if 'sfmr' in grp.lower():
+            df_grp['altitude'] = DEFAULT_SFMR_ALTITUDE
+            raw_data_pack['var_attrs'][grp]['altitude'] = {
+                'units': 'm', 'long_name': 'Assumed Observation Height'
+            }
+
+        cols_lower = {c.lower(): c for c in df_grp.columns}
+        has_u = 'u' in cols_lower
+        has_v = 'v' in cols_lower
+        has_w = 'w' in cols_lower
+
+        def get_err_col(var_name):
+            cands = [f"{var_name}err", f"{var_name}_err", f"{var_name}_error", f"{var_name}error"]
+            return next((cols_lower[c] for c in cands if c in cols_lower), None)
+
+        if not (has_u and has_v):
+            continue
+
+        u_c, v_c     = cols_lower['u'], cols_lower['v']
+        u_vals       = df_grp[u_c]
+        v_vals       = df_grp[v_c]
+        u_units      = raw_data_pack['var_attrs'][grp].get(u_c, {}).get('units', 'm/s')
+        u_err_c      = get_err_col('u')
+        v_err_c      = get_err_col('v')
+
+        wspd_hz = np.sqrt(u_vals**2 + v_vals**2)
+        df_grp['wspd_hz_comp'] = wspd_hz
+        raw_data_pack['var_attrs'][grp]['wspd_hz_comp'] = {
+            'units': u_units, 'long_name': 'Horizontal Wind Speed (Computed)'
+        }
+
+        if u_err_c and v_err_c:
+            u_err_vals = df_grp[u_err_c]
+            v_err_vals = df_grp[v_err_c]
+            u_err_const = np.isclose(np.nanmin(u_err_vals), np.nanmax(u_err_vals))
+            v_err_const = np.isclose(np.nanmin(v_err_vals), np.nanmax(v_err_vals))
+            if u_err_const and v_err_const:
+                hz_err      = np.sqrt(u_err_vals**2 + v_err_vals**2)
+                hz_err_name = 'Horizontal Wind Speed Error (Static Computed)'
+            else:
+                hz_err = np.where(wspd_hz > 0, np.sqrt((u_vals * u_err_vals)**2 + (v_vals * v_err_vals)**2) / wspd_hz, 0.0)
+                hz_err_name = 'Horizontal Wind Speed Error (Dynamic Computed)'
+            df_grp['wspd_hz_comp_err'] = hz_err
+            raw_data_pack['var_attrs'][grp]['wspd_hz_comp_err'] = {
+                'units': u_units, 'long_name': hz_err_name
+            }
+
+        df_grp['wind_vec_hz'] = wspd_hz
+        raw_data_pack['var_attrs'][grp]['wind_vec_hz'] = {
+            'units': u_units, 'long_name': 'Horizontal Wind Vectors'
+        }
+
+        if not has_w: continue
+
+        w_c    = cols_lower['w']
+        w_vals = df_grp[w_c]
+
+        wspd_3d = np.sqrt(u_vals**2 + v_vals**2 + w_vals**2)
+        df_grp['wspd_3d_comp'] = wspd_3d
+        raw_data_pack['var_attrs'][grp]['wspd_3d_comp'] = {
+            'units': u_units, 'long_name': '3D Wind Speed (Computed)'
+        }
+
+        w_err_c = get_err_col('w')
+        if u_err_c and v_err_c and w_err_c:
+            u_err_vals = df_grp[u_err_c]
+            v_err_vals = df_grp[v_err_c]
+            w_err_vals = df_grp[w_err_c]
+            u_err_const = np.isclose(np.nanmin(u_err_vals), np.nanmax(u_err_vals))
+            v_err_const = np.isclose(np.nanmin(v_err_vals), np.nanmax(v_err_vals))
+            w_err_const = np.isclose(np.nanmin(w_err_vals), np.nanmax(w_err_vals))
+            if u_err_const and v_err_const and w_err_const:
+                err_3d      = np.sqrt(u_err_vals**2 + v_err_vals**2 + w_err_vals**2)
+                err_3d_name = '3D Wind Speed Error (Static Computed)'
+            else:
+                err_3d = np.where(wspd_3d > 0, np.sqrt((u_vals * u_err_vals)**2 + (v_vals * v_err_vals)**2 + (w_vals * w_err_vals)**2) / wspd_3d, 0.0)
+                err_3d_name = '3D Wind Speed Error (Dynamic Computed)'
+            df_grp['wspd_3d_comp_err'] = err_3d
+            raw_data_pack['var_attrs'][grp]['wspd_3d_comp_err'] = {
+                'units': u_units, 'long_name': err_3d_name
+            }
+
+        df_grp['wind_vec_3d'] = wspd_3d
+        raw_data_pack['var_attrs'][grp]['wind_vec_3d'] = {
+            'units': u_units, 'long_name': '3D Wind Vectors'
+        }
+
+def compute_global_domain(data_pack):
+    """
+    Scans all groups for lat/lon and stores a tight square bounding box
+    in data_pack['global_domain']. Called at file load; also safe to call
+    lazily if missing.
+    """
+    all_lats, all_lons = [], []
+    for grp, df in data_pack['data'].items():
+        if df is None or df.empty:
+            continue
+        cl = {c.lower(): c for c in df.columns}
+        x_c = next((cl[c] for c in ['lon', 'longitude', 'clon'] if c in cl), None)
+        y_c = next((cl[c] for c in ['lat', 'latitude',  'clat'] if c in cl), None)
+        if x_c and y_c:
+            lons = df[x_c].dropna().values
+            lats = df[y_c].dropna().values
+            if len(lons): all_lons.extend(lons.tolist())
+            if len(lats): all_lats.extend(lats.tolist())
+
+    if not all_lats or not all_lons:
+        data_pack['global_domain'] = None
+        return
+
+    span_lat = max(float(np.max(all_lats)) - float(np.min(all_lats)), 0.05)
+    span_lon = max(float(np.max(all_lons)) - float(np.min(all_lons)), 0.05)
+    buf_lat  = span_lat * 0.05
+    buf_lon  = span_lon * 0.05
+    lat_min  = float(np.min(all_lats)) - buf_lat
+    lat_max  = float(np.max(all_lats)) + buf_lat
+    lon_min  = float(np.min(all_lons)) - buf_lon
+    lon_max  = float(np.max(all_lons)) + buf_lon
+    lat_span = lat_max - lat_min
+    lon_span = lon_max - lon_min
+    if lat_span > lon_span:
+        extra = (lat_span - lon_span) / 2
+        lon_min -= extra; lon_max += extra
+    else:
+        extra = (lon_span - lat_span) / 2
+        lat_min -= extra; lat_max += extra
+
+    data_pack['global_domain'] = {
+        'lat_min': round(lat_min, 2), 'lat_max': round(lat_max, 2),
+        'lon_min': round(lon_min, 2), 'lon_max': round(lon_max, 2),
+    }
+
+def compute_vert_bounds(data_pack):
+    """
+    Pre-computes vertical (height/pressure) slider bounds for every group and column.
+    Stores the results in data_pack['vert_bounds'].
+    """
+    bounds = {}
+    for grp, df in data_pack['data'].items():
+        if df is None or df.empty:
+            continue
+        cl = {c.lower(): c for c in df.columns}
+        grp_bounds = {}
+        vert_keys = ['height', 'ght', 'altitude', 'elev', 'pres', 'pressure', 'p']
+        for key in vert_keys:
+            if key not in cl:
+                continue
+            col = cl[key]
+            is_pres = key in ['pres', 'pressure', 'p']
+            raw = df[col].dropna().values
+            if len(raw) == 0:
+                continue
+            unit = decode_metadata(
+                data_pack['var_attrs'].get(grp, {}).get(col, {}).get('units', '')
+            )
+            convert = 'Pa' in unit and 'hPa' not in unit
+            vals = raw / 100.0 if convert else raw.copy()
+            display_unit = 'hPa' if convert else unit
+
+            if is_pres or convert:
+                zmin = float(max(0.0, math.floor(np.nanmin(vals) / 50.0) * 50.0))
+                raw_max = float(np.nanmax(vals))
+                zmax = float(math.ceil(raw_max / 5.0) * 5.0 + 5.0)
+                zmax = max(zmax, zmin + 50.0)
+                step = 5.0
+            else:
+                zmin = 0.0
+                zmax = float(math.ceil(np.nanmax(vals) / 1000.0) * 1000.0)
+                if zmax == 0.0:
+                    zmax = 1000.0
+                step = 10.0
+
+            if zmin >= zmax:
+                zmax = zmin + step
+
+            grp_bounds[col] = (zmin, zmax, is_pres or convert, display_unit, step)
+        if grp_bounds:
+            bounds[grp] = grp_bounds
+    data_pack['vert_bounds'] = bounds
     

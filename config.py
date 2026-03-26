@@ -53,6 +53,9 @@ GLOBAL_VAR_CONFIG = {
     'wspd_3d_comp': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_derived': True},
     'wind_vec_hz':  {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_vector': True},
     'wind_vec_3d':  {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_vector': True},
+    'dist_from_center': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False,
+                         'is_derived': True, 'is_coord': True,
+                         'display_name': 'Distance from Storm Center (km)'},
     
     # --- VERTICAL MEASUREMENTS (Now Plottable) ---
     'ght':      {'colorscale': 'Earth', 'hide': False, 'is_coord': True},
@@ -70,14 +73,33 @@ UNIT_CONVERSIONS = {
     'kg kg**-1': {'multiplier': 1000.0, 'new_unit': 'g/kg'}
 }
 
-# --- CONSTANTS ---
+# --- MATH & PHYSICS CONSTANTS ---
 MS_TO_KTS = 1.94384
+EARTH_R_KM = 6371.0
+SURFACE_PRESSURE_HPA = 1013.25
+DEFAULT_SFMR_ALTITUDE = 10.0
 
-# --- USER INTERFACE DEFAULTS ---
+# --- GEOGRAPHIC DEFAULTS ---
+GLOBAL_LAT_MIN = -90.0
+GLOBAL_LAT_MAX = 90.0
+GLOBAL_LON_MIN = -180.0
+GLOBAL_LON_MAX = 180.0
+FALLBACK_STORM_CENTER_LAT = 20.0
+FALLBACK_STORM_CENTER_LON = -50.0
+
+# --- USER INTERFACE & PLOT DEFAULTS ---
 DEFAULT_HIST_BINS = 50
+DEFAULT_INTENSITY_MIN = 0.0
+DEFAULT_INTENSITY_MAX = 100.0
+DEFAULT_MSLP_MIN = 900.0
+DEFAULT_MSLP_MAX = 1020.0
+DEFAULT_SR_MAX_RANGE = 500.0
+SR_RING_CANDIDATES = [1, 2, 5, 10, 25, 50, 100, 150, 200, 250, 500]
+RH_RING_CANDIDATES = [10, 25, 50, 100, 150, 200, 250, 500]
+DEFAULT_MAX_HEIGHT_M = 15000.0
+DEFAULT_MAX_PRESSURE_HPA = 1015.0
 
 # --- SUMMARY PLOT BOUNDARIES ---
-# Fixed domain for the summary map matching manuscript bounds
 DOMAIN_LAT_MIN = 10.0
 DOMAIN_LAT_MAX = 50.0
 DOMAIN_LON_MIN = -120.0
@@ -87,21 +109,20 @@ DOMAIN_LON_MAX = -20.0
 # GLOBAL CATEGORY & PLATFORM STYLING
 # ---------------------------------------------------------------------
 
-# Colors matched to manuscript with enhanced contrast for lighter variants
 CAT_COLORS = {
-    'WV': '#e0e0e0',      # Tropical Wave — lightest grey
-    'DB': '#b0b0b0',      # Disturbance — mid grey
-    'TD': '#42c7f4',      # Tropical Depression — light blue
-    'TS': '#7be09b',      # Tropical Storm — light green
-    'H1': '#11aa4b',      # Hurricane Cat 1 — green
-    'H2': '#fff599',      # Hurricane Cat 2 — light yellow
-    'H3': '#fee609',      # Hurricane Cat 3 — yellow
-    'H4': '#fcae91',      # Hurricane Cat 4 — light salmon
-    'H5': '#ef3d25',      # Hurricane Cat 5 — deep red
-    'EX': '#eec1db',      # Extratropical — light pink
-    'LO': '#fce4f0',      # Remnant Low — very light pink
-    'SS': '#ffffff',      # Subtropical Storm — white
-    'Unknown': '#ffffff'  # Unknown — white
+    'WV': '#e0e0e0',      
+    'DB': '#b0b0b0',      
+    'TD': '#42c7f4',      
+    'TS': '#7be09b',      
+    'H1': '#11aa4b',      
+    'H2': '#fff599',      
+    'H3': '#fee609',      
+    'H4': '#fcae91',      
+    'H5': '#ef3d25',      
+    'EX': '#eec1db',      
+    'LO': '#fce4f0',      
+    'SS': '#ffffff',      
+    'Unknown': '#ffffff'  
 }
 
 CAT_ORDER = ['WV', 'DB', 'TD', 'TS', 'H1', 'H2', 'H3', 'H4', 'H5', 'EX', 'LO', 'SS', 'Unknown']
