@@ -22,6 +22,26 @@ EXPECTED_META = [
     "tc_category", "time_coverage_end", "time_coverage_start", "title", "version_number"
 ]
 
+AVAILABLE_COLORSCALES = [
+    'Blues', 'Earth', 'hsv', 'Jet', 'Plasma', 
+    'PuOr_r', 'RdBu_r', 'Turbo', 'Viridis', 'Viridis_r', 'YlGnBu'
+]
+
+# --- USER-FRIENDLY COLORSCALE NAMES ---
+COLORSCALE_NAMES = {
+    'Blues': 'Blues (Sequential)',
+    'Earth': 'Earth (Terrain/Elevation)',
+    'hsv': 'HSV (Directional/Circular)',
+    'Jet': 'Jet (Classic Rainbow)',
+    'Plasma': 'Plasma (Perceptually Uniform)',
+    'PuOr_r': 'Purple-Orange (Diverging)',
+    'RdBu_r': 'Red-Blue (Diverging)',
+    'Turbo': 'Turbo (Smooth Rainbow)',
+    'Viridis': 'Viridis (Default Uniform)',
+    'Viridis_r': 'Viridis Reversed',
+    'YlGnBu': 'Yellow-Green-Blue (Sequential)'
+}
+
 GLOBAL_VAR_CONFIG = {
     # --- NON-PLOTTABLE COORDINATES & METADATA (Hidden) ---
     'lat': {'hide': True, 'is_coord': True}, 'lon': {'hide': True, 'is_coord': True}, 'time': {'hide': False, 'is_coord': True},

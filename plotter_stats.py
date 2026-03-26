@@ -160,7 +160,7 @@ class StormPlotterStats(StormPlotterSpatial):
 
     def plot_histogram_2d(self, group_name, variable, coord_var,
                           nbinsx=None, nbinsy=None, reverse_axes=False,
-                          normalization="None"):
+                          normalization="None", custom_colorscale=None):
         if group_name not in self.data:
             return None
 
@@ -190,7 +190,7 @@ class StormPlotterStats(StormPlotterSpatial):
 
         _var_key  = variable[len('_log10_'):] if variable.startswith('_log10_') else variable
         var_conf  = GLOBAL_VAR_CONFIG.get(_var_key.lower(), {})
-        cmap_name = var_conf.get('colorscale', 'Viridis')
+        cmap_name = custom_colorscale if custom_colorscale else var_conf.get('colorscale', 'Viridis')
 
         try:
             import plotly.colors
@@ -264,7 +264,8 @@ class StormPlotterStats(StormPlotterSpatial):
 
     def plot_scatter(self, group_name, variable, coord_var, color_var=None,
                      show_trendline=False, reverse_axes=False,
-                     marker_size_pct=100):
+                     marker_size_pct=100, custom_colorscale=None):
+                     
         if group_name not in self.data:
             return None
 
@@ -298,14 +299,14 @@ class StormPlotterStats(StormPlotterSpatial):
         if color_var and color_var in plot_df.columns:
             color_vals = plot_df[color_var].values
             var_conf   = GLOBAL_VAR_CONFIG.get(color_var.lower(), {})
-            cmap       = var_conf.get('colorscale', 'Viridis')
+            cmap       = custom_colorscale if custom_colorscale else var_conf.get('colorscale', 'Viridis')
             cmid       = var_conf.get('cmid', None)
         else:
             H, xedges, yedges = np.histogram2d(x_vals, y_vals, bins=50)
             xi         = np.clip(np.searchsorted(xedges, x_vals) - 1, 0, H.shape[0] - 1)
             yi         = np.clip(np.searchsorted(yedges, y_vals) - 1, 0, H.shape[1] - 1)
             color_vals = H[xi, yi]
-            cmap       = "Viridis"
+            cmap       = custom_colorscale if custom_colorscale else "Viridis"
             cmid       = None
 
         xaxis_dict = dict(

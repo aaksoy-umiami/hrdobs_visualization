@@ -35,7 +35,7 @@ class StormPlotterSpatial(StormPlotterBase):
     def plot(self, group_name, variable, z_con, domain_bounds, show_center,
              is_3d=False, z_col=None, thinning_pct=None, marker_size_pct=100,
              time_bounds=None, z_ratio=0.3, vec_scale=1.0, show_basemap=False,
-             cen_mode="Display Location Only", color_scale="Linear scale"):
+             cen_mode="Display Location Only", color_scale="Linear scale", custom_colorscale=None):
              
         if group_name not in self.data:
             return None, None
@@ -87,7 +87,7 @@ class StormPlotterSpatial(StormPlotterBase):
             z_vals = plot_df[z_col].values.copy()
 
         var_conf = GLOBAL_VAR_CONFIG.get(variable.lower(), {})
-        cmap     = var_conf.get('colorscale', 'Jet')
+        cmap     = custom_colorscale if custom_colorscale else var_conf.get('colorscale', 'Jet')
         cmid     = var_conf.get('cmid', None)
         sz_mult  = marker_size_pct / 100.0
 
@@ -399,97 +399,14 @@ class StormPlotterSpatial(StormPlotterBase):
 
         return fig, plot_df
 
-    def _to_storm_relative(self, obs_lons, obs_lats, obs_times, track_grp, up_convention):
-        from datetime import datetime, timezone
-
-        track_df = self.data[track_grp]
-        tcols    = {c.lower(): c for c in track_df.columns}
-        t_col    = tcols.get('time')
-        lat_col  = next((tcols[c] for c in ['lat', 'latitude', 'clat']  if c in tcols), None)
-        lon_col  = next((tcols[c] for c in ['lon', 'longitude', 'clon'] if c in tcols), None)
-        if not all([t_col, lat_col, lon_col]):
-            return None
-
-        def _ts(v):
-            try:
-                s  = f"{v:.0f}"
-                dt = datetime.strptime(s, '%Y%m%d%H%M%S')
-                return dt.replace(tzinfo=timezone.utc).timestamp()
-            except Exception:
-                return np.nan
-
-        track_epochs = np.array([_ts(v) for v in track_df[t_col].values])
-        track_lats   = track_df[lat_col].values.astype(float)
-        track_lons   = track_df[lon_col].values.astype(float)
-
-        order        = np.argsort(track_epochs)
-        track_epochs = track_epochs[order]
-        track_lats   = track_lats[order]
-        track_lons   = track_lons[order]
-
-        obs_epochs = np.array([_ts(v) for v in obs_times])
-
-        cen_lats = np.interp(obs_epochs, track_epochs, track_lats)
-        cen_lons = np.interp(obs_epochs, track_epochs, track_lons)
-
-        dlat     = np.radians(obs_lats - cen_lats)
-        dlon     = np.radians(obs_lons - cen_lons)
-        mean_lat = np.radians((obs_lats + cen_lats) / 2.0)
-        x_km     = EARTH_R_KM * dlon * np.cos(mean_lat)
-        y_km     = EARTH_R_KM * dlat
-
-        range_km    = np.sqrt(x_km**2 + y_km**2)
-        azimuth_deg = np.degrees(np.arctan2(x_km, y_km)) % 360
-
-        mean_heading = None
-        if up_convention == "Relative to Storm Motion":
-            dlat_tr     = np.diff(track_lats)
-            dlon_tr     = np.diff(track_lons)
-            mean_lat_tr = np.radians((track_lats[:-1] + track_lats[1:]) / 2.0)
-            dy_tr       = EARTH_R_KM * np.radians(dlat_tr)
-            dx_tr       = EARTH_R_KM * np.radians(dlon_tr) * np.cos(mean_lat_tr)
-            headings    = np.degrees(np.arctan2(dx_tr, dy_tr)) % 360
-            mean_heading = float(np.nanmedian(headings))
-
-            theta_rad = np.radians(mean_heading)
-            x_rot     =  x_km * np.cos(theta_rad) + y_km * np.sin(theta_rad)
-            y_rot     = -x_km * np.sin(theta_rad) + y_km * np.cos(theta_rad)
-            x_km, y_km = x_rot, y_rot
-
-            azimuth_deg = (azimuth_deg - mean_heading) % 360
-
-        return x_km, y_km, range_km, azimuth_deg, mean_heading
-
-    def get_sr_max_range(self, group_name, sr_track_grp, df_override=None):
-        if group_name not in self.data or sr_track_grp not in self.data:
-            return DEFAULT_SR_MAX_RANGE
-        df         = df_override if df_override is not None else self.data[group_name]
-        cols_lower = {c.lower(): c for c in df.columns}
-        lat_col    = next((cols_lower[c] for c in ['lat', 'latitude', 'clat']  if c in cols_lower), None)
-        lon_col    = next((cols_lower[c] for c in ['lon', 'longitude', 'clon'] if c in cols_lower), None)
-        time_col   = cols_lower.get('time')
-        if not all([lat_col, lon_col, time_col]):
-            return DEFAULT_SR_MAX_RANGE
-        df = df.dropna(subset=[lat_col, lon_col, time_col])
-        if df.empty:
-            return DEFAULT_SR_MAX_RANGE
-        result = self._to_storm_relative(
-            df[lon_col].values, df[lat_col].values,
-            df[time_col].values, sr_track_grp, "Relative to North"
-        )
-        if result is None:
-            return DEFAULT_SR_MAX_RANGE
-        _, _, range_km, _, _ = result
-        raw_max      = float(np.nanmax(range_km))
-        ring_spacing = 25.0 if raw_max <= 150 else 50.0 if raw_max <= 500 else 100.0
-        return float(np.ceil(raw_max / ring_spacing) * ring_spacing)
-
     def plot_storm_relative(self, group_name, variable, z_con,
                             domain_bounds, sr_track_grp,
                             up_convention="Relative to North",
                             thinning_pct=None, marker_size_pct=100,
                             time_bounds=None, color_scale="Linear scale",
-                            show_center=True, cen_mode="Display Location Only"):
+                            show_center=True, cen_mode="Display Location Only",
+                            custom_colorscale=None):
+                            
         if group_name not in self.data:
             return None, None
 
@@ -555,7 +472,7 @@ class StormPlotterSpatial(StormPlotterBase):
             _full_cmax = min(_full_cmax,  10800.0)
 
         var_conf   = GLOBAL_VAR_CONFIG.get(variable.lower(), {})
-        cmap       = var_conf.get('colorscale', 'Jet')
+        cmap       = custom_colorscale if custom_colorscale else var_conf.get('colorscale', 'Jet')
         cmid_conf  = var_conf.get('cmid')
         color_vals = plot_df[variable].values
         cb_title   = self._get_var_display_name(group_name, variable)
@@ -771,7 +688,9 @@ class StormPlotterSpatial(StormPlotterBase):
     def plot_radial_height(self, group_name, variable, sr_track_grp,
                            domain_bounds=None, thinning_pct=None,
                            marker_size_pct=100, time_bounds=None,
-                           color_scale="Linear scale", rh_z_col=None):
+                           color_scale="Linear scale", rh_z_col=None,
+                           custom_colorscale=None):
+                           
         if group_name not in self.data:
             return None, None
 
@@ -835,7 +754,7 @@ class StormPlotterSpatial(StormPlotterBase):
         z_label = f"{'Pressure' if is_pres else 'Height'} ({z_units})"
 
         var_conf   = GLOBAL_VAR_CONFIG.get(variable.lower(), {})
-        cmap       = var_conf.get('colorscale', 'Jet')
+        cmap       = custom_colorscale if custom_colorscale else var_conf.get('colorscale', 'Jet')
         cmid_conf  = var_conf.get('cmid')
         cmid       = float(cmid_conf) if cmid_conf is not None else None
         cb_tickvals, cb_ticktext = None, None
@@ -969,7 +888,6 @@ class StormPlotterSpatial(StormPlotterBase):
         )
 
         return fig, plot_df
-
 
 def add_flight_tracks(fig, data_pack, track_mapping, plot_track, selected_platform,
                       is_3d, is_target_pres, proj_option="Bottom Only",

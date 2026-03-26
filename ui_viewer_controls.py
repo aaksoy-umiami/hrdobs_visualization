@@ -12,7 +12,7 @@ import pandas as pd
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 
-from config import EXPECTED_GROUPS, EXPECTED_META
+from config import EXPECTED_GROUPS, EXPECTED_META, AVAILABLE_COLORSCALES, GLOBAL_VAR_CONFIG, COLORSCALE_NAMES
 from data_utils import load_data_from_h5, decode_metadata, compute_global_domain, compute_vert_bounds
 from ui_layout import CLR_MUTED, CLR_SUCCESS, CLR_EXTRA, FS_TABLE, FS_BODY
 from ui_components import section_divider, spacer, sidebar_label, init_state, sync_namespace, consume_flag
@@ -25,6 +25,7 @@ class ViewerIntent:
     plot_var:         Optional[str]   = None   
     variable:         Optional[str]   = None   
     color_scale:      str             = "Linear scale"
+    custom_colorscale:Optional[str]   = None
     show_cen:         bool            = True
     cen_mode:         str             = "Display Location Only"
     apply_thinning:   bool            = False
@@ -67,7 +68,7 @@ _VIEWER_STATE_KEYS = [
     'v_lat_range', 'v_lon_range', 'v_time_range', 'v_show_cen', 'v_cen_mode',
     'v_clat', 'v_clon', 'v_track_proj', 'v_vert_range', 'v_color_scale',
     'v_plot_err', 'v_vec_scale', 'v_show_basemap',
-    'v_plot_type', 'v_sr_up', 'v_sr_track_grp'
+    'v_plot_type', 'v_sr_up', 'v_sr_track_grp', 'v_custom_colorscale'
 ]
 
 def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian"):
@@ -83,13 +84,15 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
         if 'show_auto_thin_msg' in st.session_state:
             st.session_state.show_auto_thin_msg = False
         for k in ['v_lvl_range', 'v_time_range', 'v_last_coord',
-                  'v_vert_range', 'v_plot_err', 'v_vec_scale', '_last_dom_z_col']:
+                  'v_vert_range', 'v_plot_err', 'v_vec_scale', '_last_dom_z_col', 'v_custom_colorscale']:
             if k in st.session_state:
                 del st.session_state[k]
 
     def reset_var_dependencies():
         if 'v_plot_err' in st.session_state:
             del st.session_state['v_plot_err']
+        if 'v_custom_colorscale' in st.session_state:
+            del st.session_state['v_custom_colorscale']
 
     with st.sidebar.container(border=True):
         st.markdown("### 📈 Plot Variable")
@@ -266,6 +269,21 @@ def _render_plot_type_section(data_pack, sel_group, is_3d, h_col=None, p_col=Non
 def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lower, plot_var, plot_type="Horizontal Cartesian"):
     with st.sidebar.container(border=True):
         st.markdown("### ⚙️ Plotting Options")
+        
+        default_cmap = GLOBAL_VAR_CONFIG.get(plot_var.lower() if plot_var else "", {}).get('colorscale', 'Jet')
+        cmaps = sorted(list(set(AVAILABLE_COLORSCALES + [default_cmap])))
+        init_state('v_custom_colorscale', default_cmap)
+        
+        c_cs1, c_cs2 = st.columns([1, 1.5])
+        with c_cs1:
+            sidebar_label("Colorscale:", size='label')
+        with c_cs2:
+            custom_colorscale = st.selectbox(
+                "Colorscale", cmaps, 
+                key='v_custom_colorscale', label_visibility="collapsed",
+                format_func=lambda x: COLORSCALE_NAMES.get(x, x)
+            )
+        section_divider()
 
         is_rh  = (plot_type == "Radial-Height Profile")
         is_sr  = (plot_type == "Horizontal Storm-Relative")
@@ -446,7 +464,7 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
     return (show_cen, cen_mode, apply_thinning, thin_pct, z_con, target_col,
             target_col_3d, track_mapping, plot_track, selected_platform,
             track_proj, is_3d, plot_z_col, z_ratio, marker_sz, vec_scale,
-            can_do_3d)
+            can_do_3d, custom_colorscale)
 
 def render_viewer_controls(plotter) -> ViewerIntent:
     intent = ViewerIntent()
@@ -497,10 +515,11 @@ def render_viewer_controls(plotter) -> ViewerIntent:
     (show_cen, cen_mode, apply_thinning, thin_pct, z_con, target_col,
      target_col_3d, track_mapping, plot_track, selected_platform,
      track_proj, is_3d, plot_z_col, z_ratio, marker_sz, vec_scale,
-     can_do_3d) = _render_plotting_options(
+     can_do_3d, custom_colorscale) = _render_plotting_options(
          data_pack, sel_group, h_col, p_col, df_sel, cols_lower, plot_var, plot_type
      )
 
+    intent.custom_colorscale = custom_colorscale
     intent.show_cen          = show_cen
     intent.cen_mode          = cen_mode
     intent.show_basemap      = st.session_state.get('v_show_basemap', False)
@@ -526,7 +545,7 @@ def render_viewer_controls(plotter) -> ViewerIntent:
     (domain_bounds, convert_dom, vert_range, domain_z_col) = _render_domain_section(
          data_pack, sel_group, df_sel, options, target_col, target_col_3d, is_3d,
          intent.default_lat_min, intent.default_lat_max, intent.default_lon_min, intent.default_lon_max,
-         plot_type=plot_type, sr_track_grp=sr_track_grp, plotter=plotter
+         plot_type=plot_type, sr_track_grp=sr_track_grp, plotter=plotter, rh_z_col=rh_z_col
      )
     intent.domain_bounds = domain_bounds
 

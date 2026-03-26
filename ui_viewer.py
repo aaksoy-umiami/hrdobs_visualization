@@ -3,14 +3,6 @@
 ui_viewer.py
 ------------
 File Data Viewer tab entry point.
-
-All sidebar controls live in ui_viewer_controls.py.
-This module is responsible only for:
-  1. Initialising session state
-  2. Calling render_viewer_controls() to get a ViewerIntent
-  3. Enforcing the auto-thinning guard
-  4. Calling StormPlotter.plot() and add_flight_tracks()
-  5. Displaying the resulting figure
 """
 
 import streamlit as st
@@ -21,21 +13,17 @@ from ui_layout import apply_viewer_compaction_css
 from ui_viewer_controls import render_viewer_controls
 from plotter import StormPlotter, add_flight_tracks
 
-# Maximum scatter points before auto-thinning kicks in
 _MAX_PLOT_POINTS = 50_000
-
 
 def render_viewer_tab():
     apply_viewer_compaction_css()
 
-    # Restore v_ keys from the persistence dict on first load
     if 'viewer_state' not in st.session_state:
         st.session_state.viewer_state = {}
     for k, v in st.session_state.viewer_state.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
-    # Build the plotter (or a stub if no file is loaded yet)
     data_pack = st.session_state.get('data_pack')
     if data_pack is not None:
         plotter = StormPlotter(
@@ -45,14 +33,12 @@ def render_viewer_tab():
     else:
         plotter = None
 
-    # Render all sidebar controls and collect intent
     intent = render_viewer_controls(plotter)
 
     if intent.data_pack is None:
         st.info("👈 Please upload an AI-Ready HDF5 file from the sidebar to visualize its contents.")
         return
 
-    # Refresh plotter in case file was just loaded this run
     data_pack = intent.data_pack
     plotter   = StormPlotter(
         data_pack['data'], data_pack['track'],
@@ -62,9 +48,6 @@ def render_viewer_tab():
     if not intent.plot_var:
         return
 
-    # ------------------------------------------------------------------
-    # Auto-thinning guard
-    # ------------------------------------------------------------------
     sel_group = intent.sel_group
     plot_var  = intent.plot_var
 
@@ -113,9 +96,6 @@ def render_viewer_tab():
             icon="⚡"
         )
 
-    # ------------------------------------------------------------------
-    # Plot
-    # ------------------------------------------------------------------
     active_thinning = intent.thin_pct if intent.apply_thinning else None
 
     if intent.plot_type == "Radial-Height Profile" and intent.sr_track_grp:
@@ -128,6 +108,7 @@ def render_viewer_tab():
             time_bounds=intent.time_bounds,
             color_scale=intent.color_scale,
             rh_z_col=intent.rh_z_col,
+            custom_colorscale=intent.custom_colorscale
         )
     elif intent.plot_type == "Horizontal Storm-Relative" and intent.sr_track_grp:
         fig, plot_df = plotter.plot_storm_relative(
@@ -141,6 +122,7 @@ def render_viewer_tab():
             color_scale=intent.color_scale,
             show_center=intent.show_cen,
             cen_mode=intent.cen_mode,
+            custom_colorscale=intent.custom_colorscale
         )
     else:
         fig, plot_df = plotter.plot(
@@ -156,10 +138,10 @@ def render_viewer_tab():
             show_basemap=intent.show_basemap,
             cen_mode=intent.cen_mode,
             color_scale=intent.color_scale,
+            custom_colorscale=intent.custom_colorscale
         )
 
     if fig is not None:
-        # Flight track overlay — Cartesian, SR, and RH modes handled separately
         if intent.plot_type == "Horizontal Cartesian":
             is_target_pres = intent.plot_z_col and any(
                 p in intent.plot_z_col.lower() for p in ['pres', 'pressure', 'p']
@@ -174,20 +156,16 @@ def render_viewer_tab():
         elif intent.plot_type == "Horizontal Storm-Relative" and intent.plot_track:
             import plotly.graph_objects as go
             for plat, track_group in intent.track_mapping.items():
-                if plat != intent.selected_platform:
-                    continue
+                if plat != intent.selected_platform: continue
                 track_df = data_pack['data'].get(track_group)
-                if track_df is None or track_df.empty:
-                    continue
+                if track_df is None or track_df.empty: continue
                 tcl = {c.lower(): c for c in track_df.columns}
                 t_lon_c = next((tcl[c] for c in ['lon', 'longitude'] if c in tcl), None)
                 t_lat_c = next((tcl[c] for c in ['lat', 'latitude']  if c in tcl), None)
                 t_time_c = tcl.get('time')
-                if not (t_lon_c and t_lat_c and t_time_c):
-                    continue
+                if not (t_lon_c and t_lat_c and t_time_c): continue
                 tdf = track_df[[t_lon_c, t_lat_c, t_time_c]].dropna()
-                if tdf.empty:
-                    continue
+                if tdf.empty: continue
                 try:
                     result = plotter._to_storm_relative(
                         tdf[t_lon_c].values, tdf[t_lat_c].values,
@@ -202,34 +180,25 @@ def render_viewer_tab():
                             name=f'{plat} Flight Track',
                             showlegend=False, hoverinfo='skip'
                         ))
-                except Exception:
-                    pass
+                except Exception: pass
         elif (intent.plot_type == "Radial-Height Profile" and
               intent.plot_track and intent.track_proj == "Show"):
             import plotly.graph_objects as go
             for plat, track_group in intent.track_mapping.items():
-                if plat != intent.selected_platform:
-                    continue
+                if plat != intent.selected_platform: continue
                 track_df = data_pack['data'].get(track_group)
-                if track_df is None or track_df.empty:
-                    continue
+                if track_df is None or track_df.empty: continue
                 tcl = {c.lower(): c for c in track_df.columns}
                 t_lon_c  = next((tcl[c] for c in ['lon', 'longitude'] if c in tcl), None)
                 t_lat_c  = next((tcl[c] for c in ['lat', 'latitude']  if c in tcl), None)
                 t_time_c = tcl.get('time')
-                # Match the same Z column the observations are using
                 if intent.rh_z_col and intent.rh_z_col.lower() in tcl:
                     t_z_c = tcl[intent.rh_z_col.lower()]
                 else:
-                    t_z_c = next((tcl[c] for c in
-                                  ['height', 'ght', 'altitude', 'elev', 'pres', 'pressure', 'p']
-                                  if c in tcl), None)
-                if not (t_lon_c and t_lat_c and t_time_c and t_z_c):
-                    continue
+                    t_z_c = next((tcl[c] for c in ['height', 'ght', 'altitude', 'elev', 'pres', 'pressure', 'p'] if c in tcl), None)
+                if not (t_lon_c and t_lat_c and t_time_c and t_z_c): continue
                 tdf = track_df[[t_lon_c, t_lat_c, t_time_c, t_z_c]].dropna()
-                if tdf.empty:
-                    continue
-                # Convert Pa → hPa for pressure if needed (to match obs axis)
+                if tdf.empty: continue
                 t_z_vals = tdf[t_z_c].values.copy().astype(float)
                 is_pres_track = any(p in t_z_c.lower() for p in ['pres', 'pressure', 'p'])
                 if is_pres_track and t_z_vals.max() > 1100:
@@ -248,24 +217,21 @@ def render_viewer_tab():
                             name=f'{plat} Flight Track',
                             showlegend=False, hoverinfo='skip'
                         ))
-                        # Expand Y axis to include track z values outside obs range
                         current_range = fig.layout.yaxis.range
                         if current_range and len(t_z_vals) > 0:
                             t_z_min = float(np.nanmin(t_z_vals))
                             t_z_max = float(np.nanmax(t_z_vals))
-                            is_pres_axis = (intent.rh_z_col and any(
-                                p in intent.rh_z_col.lower() for p in ['pres', 'pressure', 'p']))
+                            is_pres_axis = (intent.rh_z_col and any(p in intent.rh_z_col.lower() for p in ['pres', 'pressure', 'p']))
                             if is_pres_axis:
-                                # Pressure: axis is [high_p, low_p] (reversed)
-                                new_lo = min(current_range[1], t_z_min)  # lower pressure = higher altitude
-                                new_hi = max(current_range[0], t_z_max)  # higher pressure = lower altitude
+                                new_lo = min(current_range[1], t_z_min)
+                                new_hi = max(current_range[0], t_z_max)
                                 fig.update_layout(yaxis_range=[new_hi, new_lo])
                             else:
                                 new_lo = min(current_range[0], t_z_min)
                                 new_hi = max(current_range[1], t_z_max)
                                 fig.update_layout(yaxis_range=[new_lo, new_hi])
-                except Exception:
-                    pass
+                except Exception: pass
         col_left, col_center, col_right = st.columns([1, 8, 1])
         with col_center:
             st.plotly_chart(fig, use_container_width=True)
+            

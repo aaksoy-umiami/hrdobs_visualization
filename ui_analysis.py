@@ -15,10 +15,6 @@ from plotter import StormPlotter
 
 def _apply_log_transform(data_pack, sel_group, variable, coord_var,
                           log_var, log_coord_var):
-    """
-    Inject temporary log10 columns into data_pack['data'][sel_group].
-    Returns (plot_var_col, plot_coord_col, restore_fn).
-    """
     df = data_pack['data'][sel_group]
     added_cols = []
 
@@ -141,6 +137,7 @@ def render_analysis_tab():
                     nbinsy=intent.hist_bins_y,
                     reverse_axes=intent.reverse_axes,
                     normalization=intent.normalization,
+                    custom_colorscale=intent.custom_colorscale
                 )
                 if fig:
                     _, col_center, _ = st.columns([1, 8, 1])
@@ -159,6 +156,7 @@ def render_analysis_tab():
                     show_trendline=intent.scatter_trendline,
                     reverse_axes=intent.reverse_axes,
                     marker_size_pct=intent.scatter_marker_size,
+                    custom_colorscale=intent.custom_colorscale
                 )
                 if fig:
                     _, col_center, _ = st.columns([1, 8, 1])
@@ -171,3 +169,4 @@ def render_analysis_tab():
 
     finally:
         restore()
+        
