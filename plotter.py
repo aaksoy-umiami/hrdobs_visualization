@@ -1427,7 +1427,18 @@ class StormPlotter:
         """
         nx = nbinsx if nbinsx is not None else 50
         ny = nbinsy if nbinsy is not None else 50
-        
+
+        # Drop any rows where either axis is non-finite (NaN or inf),
+        # which can arise after time conversion or missing-value replacement.
+        x_vals = np.asarray(x_vals, dtype=float)
+        y_vals = np.asarray(y_vals, dtype=float)
+        finite_mask = np.isfinite(x_vals) & np.isfinite(y_vals)
+        x_vals = x_vals[finite_mask]
+        y_vals = y_vals[finite_mask]
+
+        if len(x_vals) == 0:
+            return np.zeros((ny, nx)), np.zeros(nx), np.zeros(ny)
+
         H, xedges, yedges = np.histogram2d(x_vals, y_vals, bins=[nx, ny])
         
         H = H.T
