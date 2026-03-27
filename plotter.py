@@ -2,51 +2,43 @@
 """
 plotter.py
 ----------
-Backward-compatible re-export shim.
+Main Assembler for the StormPlotter.
 
-The plotting logic has been split into three focused modules:
-
-  plotter_base.py    — StormPlotterBase  (constructor, helpers, introspection)
-  plotter_spatial.py — StormPlotterSpatial  (Cartesian, storm-relative, radial-height plots)
-  plotter_stats.py   — StormPlotterStats   (histogram, 2-D histogram, scatter plots)
-
-All existing callers that import from plotter.py continue to work unchanged:
-
-    from plotter import StormPlotter, add_flight_tracks
-
-The module-level tunable constants are also re-exported so any code that
-references them directly keeps working.
+Uses a Mixin architecture to keep files small and focused.
 """
 
 from config import EARTH_R_KM, SURFACE_PRESSURE_HPA
 from plotter_base import (
+    StormPlotterBase,
     _CONE_DOMAIN_FRACTION,
     _FIG_HEIGHT_BASE,
     _FIG_HEIGHT_Z_THRESHOLD,
     _FIG_HEIGHT_Z_STRETCH,
 )
-from plotter_stats import StormPlotterStats
-from plotter_spatial import add_flight_tracks
 
+# Import the specialized Plotting Mixins
+from plotter_cartesian import CartesianMixin, add_flight_tracks
+from plotter_storm_relative import StormRelativeMixin
+from plotter_histogram import HistogramMixin
+from plotter_scatter import ScatterMixin
 
-class StormPlotter(StormPlotterStats):
+class StormPlotter(
+    CartesianMixin,
+    StormRelativeMixin,
+    HistogramMixin,
+    ScatterMixin,
+    StormPlotterBase
+):
     """
-    Unified StormPlotter — assembles all plotting capabilities by inheriting
-    from the stats → spatial → base chain:
-
-        StormPlotter
-          └─ StormPlotterStats   (histogram, 2-D histogram, scatter)
-               └─ StormPlotterSpatial  (Cartesian, storm-relative, radial-height)
-                    └─ StormPlotterBase  (constructor, helpers, introspection)
-
-    Public API is identical to the original single-file StormPlotter.
+    Unified StormPlotter.
+    Inherits all plotting capabilities from the modular mixin classes, 
+    and core data/state management from StormPlotterBase.
     """
-
+    pass
 
 __all__ = [
     "StormPlotter",
     "add_flight_tracks",
-    # constants
     "_CONE_DOMAIN_FRACTION",
     "SURFACE_PRESSURE_HPA",
     "_FIG_HEIGHT_BASE",

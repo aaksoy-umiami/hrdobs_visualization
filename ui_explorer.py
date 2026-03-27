@@ -68,7 +68,7 @@ def render_explorer_tab():
     if not any_active:
         spacer('lg')
         spacer('lg')
-        st.info("👈 **Ready to explore?**\nPlease make a selection from the filters to begin.")
+        st.info("💡 **Ready to explore?**\nPlease make a selection from the filters to begin.")
         return
 
     # ------------------------------------------------------------------
@@ -86,7 +86,7 @@ def render_explorer_tab():
     # ------------------------------------------------------------------
     # 1. View Summary Table of Filtered Results
     # ------------------------------------------------------------------
-    with st.expander("📋 View Summary Table of Filtered Results", expanded=False):
+    with st.expander("📊 View Summary Table of Filtered Results", expanded=False):
         display_summary_table(final_df, intent.unit)
 
     # ------------------------------------------------------------------
@@ -98,7 +98,8 @@ def render_explorer_tab():
     # 3. Results Count
     # ------------------------------------------------------------------
     spacer('md')
-    st.markdown(f"#### 🔎 Found **{len(final_df)}** matching files")
+    # UPDATED THIS LINE TO SHOW THE TOTAL COUNT
+    st.markdown(f"#### 🔍 Found **{len(final_df)}/{len(db_df)}** matching files")
 
     # ------------------------------------------------------------------
     # 4. Table Controls
@@ -149,7 +150,7 @@ def render_explorer_tab():
         with sc5:
             spacer('lg')
             st.download_button(
-                label="⬇️ Download Results as CSV",
+                label="📥 Download Results as CSV",
                 data=csv_data,
                 file_name=f"hrdobs_filtered_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime='text/csv', type="secondary", width="stretch",
@@ -160,3 +161,4 @@ def render_explorer_tab():
     # ------------------------------------------------------------------
     spacer('sm')
     display_explorer_table(final_df, intent.unit, sort_col_internal, is_asc)
+    

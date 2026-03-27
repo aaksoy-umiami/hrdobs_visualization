@@ -75,7 +75,7 @@ with tab_col3:
         st.rerun()
 
 with tab_col4:
-    if st.button("ℹ️ Info", type="primary" if st.session_state.selected_tab_index == 3 else "secondary", use_container_width=True):
+    if st.button("ℹ️ Info", type="primary" if st.session_state.selected_tab_index == 3 else "secondary", width="stretch"):
         st.session_state.selected_tab_index = 3
         st.rerun()
 

@@ -217,9 +217,10 @@ def _render_usage():
 
     **Quick Start:**
     1. Ensure a file is loaded (via the sidebar or inherited from Tab 2).
-    2. **Select Analysis Mode:** - **Histogram Analysis (1D):** View the distribution of a single variable. Generates a bar/line chart and a summary statistics table (Count, Mean, Median, Mode, Std Dev).
-       - **Histogram Analysis (2D):** Create a density heatmap comparing two variables.
-       - **Scatter Analysis:** Plot two variables against each other as a point cloud.
+    2. **Select Analysis Mode:**
+       - **Histogram Analysis (1D):** View the distribution of a single variable.
+       - **Histogram Analysis (2D):** Create a density heatmap between two variables, along with the option to plot marginal probability densities.
+       - **Scatter Analysis:** Plot two variables against each other as a point cloud, with the option of coloring for a third variable.
     3. **Choose** your primary (and secondary) variables to analyze.
 
     **Key Controls:**

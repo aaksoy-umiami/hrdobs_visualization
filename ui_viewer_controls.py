@@ -126,8 +126,9 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
                     st.session_state.v_rh_z_col = rh_z_options[0]
                 rh_z_col = st.session_state.v_rh_z_col
 
+        # INCLUDE VECTORS ON TAB 2
         vars_list = plotter.get_plottable_variables(
-            sel_group, active_z_col=exclude_col or rh_z_col, exclude_vectors=True
+            sel_group, active_z_col=exclude_col or rh_z_col, exclude_vectors=False
         )
 
         variable = plot_var = color_scale = None

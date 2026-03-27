@@ -317,7 +317,7 @@ def render_explorer_summary_plots(df: pd.DataFrame, unit: str):
             st.info("No valid coordinates fall within the map domain.")
         else:
             fig_map = _build_category_map(map_df, unit)
-            st.plotly_chart(fig_map, use_container_width=True)
+            st.plotly_chart(fig_map, width="stretch")
 
         # =====================================================================
         # BOTTOM ROW: 3 Summary Plots
@@ -326,16 +326,16 @@ def render_explorer_summary_plots(df: pd.DataFrame, unit: str):
 
         with c1:
             fig_hist = _build_category_histogram(plot_df)
-            st.plotly_chart(fig_hist, use_container_width=True)
+            st.plotly_chart(fig_hist, width="stretch")
 
         with c2:
             fig_wp = _build_wind_pressure_scatter(plot_df, unit)
             if fig_wp.data:
-                st.plotly_chart(fig_wp, use_container_width=True)
+                st.plotly_chart(fig_wp, width="stretch")
             else:
                 st.info("Not enough valid data for Wind-Pressure plot.")
 
         with c3:
             fig_obs = _build_observations_bar_chart(plot_df)
-            st.plotly_chart(fig_obs, use_container_width=True)
+            st.plotly_chart(fig_obs, width="stretch")
             

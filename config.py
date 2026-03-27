@@ -44,7 +44,11 @@ COLORSCALE_NAMES = {
 
 GLOBAL_VAR_CONFIG = {
     # --- NON-PLOTTABLE COORDINATES & METADATA (Hidden) ---
-    'lat': {'hide': True, 'is_coord': True}, 'lon': {'hide': True, 'is_coord': True}, 'time': {'hide': False, 'is_coord': True},
+    'lat': {'hide': True, 'is_coord': True}, 
+    'lon': {'hide': True, 'is_coord': True}, 
+    'latitude': {'hide': True, 'is_coord': True}, 
+    'longitude': {'hide': True, 'is_coord': True}, 
+    'time': {'hide': False, 'is_coord': True},
     'clat': {'hide': True, 'is_coord': True, 'is_track_pos': True},
     'clon': {'hide': True, 'is_coord': True, 'is_track_pos': True},
     'az': {'hide': True, 'is_coord': True}, 'rmw': {'hide': True, 'is_coord': True},
@@ -73,9 +77,17 @@ GLOBAL_VAR_CONFIG = {
     'wspd_3d_comp': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_derived': True},
     'wind_vec_hz':  {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_vector': True},
     'wind_vec_3d':  {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_vector': True},
+    
+    # --- DERIVED SPATIAL COORDINATES ---
     'dist_from_center': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False,
-                         'is_derived': True, 'is_coord': True,
+                         'is_derived': True, 'is_coord': True, 'sort_weight': 100,
                          'display_name': 'Distance from Storm Center (km)'},
+    'azimuth_north':    {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False,
+                         'is_derived': True, 'is_coord': True, 'sort_weight': 101,
+                         'display_name': 'Azimuth from North (Computed) (deg)'},
+    'azimuth_motion':   {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False,
+                         'is_derived': True, 'is_coord': True, 'sort_weight': 102,
+                         'display_name': 'Azimuth from Storm Motion (Computed) (deg)'},
     
     # --- VERTICAL MEASUREMENTS (Now Plottable) ---
     'ght':      {'colorscale': 'Earth', 'hide': False, 'is_coord': True},
@@ -108,7 +120,10 @@ FALLBACK_STORM_CENTER_LAT = 20.0
 FALLBACK_STORM_CENTER_LON = -50.0
 
 # --- USER INTERFACE & PLOT DEFAULTS ---
-DEFAULT_HIST_BINS = 50
+DEFAULT_HIST_BINS = 10
+DEFAULT_HIST_BINS_AZIMUTH = 8
+DEFAULT_HIST_BINS_RADIAL = 10
+
 DEFAULT_INTENSITY_MIN = 0.0
 DEFAULT_INTENSITY_MAX = 100.0
 DEFAULT_MSLP_MIN = 900.0

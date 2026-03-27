@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict
 
 from ui_viewer_file import render_file_upload_section
-from config import DEFAULT_HIST_BINS, AVAILABLE_COLORSCALES, GLOBAL_VAR_CONFIG, COLORSCALE_NAMES
+from config import DEFAULT_HIST_BINS, DEFAULT_HIST_BINS_AZIMUTH, DEFAULT_HIST_BINS_RADIAL, AVAILABLE_COLORSCALES, GLOBAL_VAR_CONFIG, COLORSCALE_NAMES
 from ui_components import sidebar_label, section_divider, init_state, sync_namespace
 from plotter import StormPlotter
 
@@ -26,19 +26,20 @@ class AnalysisIntent:
     normalization: str = "None"
     reverse_axes: bool = False
     render_as_line: bool = False
-    scatter_trendline: bool = False
+    show_kde: bool = False
+    show_marginals: bool = False
     scatter_color_var: Optional[str] = None
     scatter_marker_size: int = 100
     log_var: bool = False
     log_coord_var: bool = False
     custom_colorscale: Optional[str] = None
+    coordinate_system: str = "Cartesian"
 
 _ANALYSIS_STATE_KEYS = [
     'a_sel_group', 'a_variable', 'a_coord_var', 'a_analysis_type', 
-    'a_bin_mode_x', 'a_bin_manual_x', 'a_bin_mode_y', 'a_bin_manual_y', 
-    'a_hist_norm', 'a_reverse_axes', 'a_render_as_line', 'a_scatter_trendline',
+    'a_hist_norm', 'a_reverse_axes', 'a_render_as_line', 'a_show_kde', 'a_show_marginals',
     'a_scatter_color', 'a_scatter_color_var', 'a_scatter_marker_size',
-    'a_scale_var', 'a_scale_coord_var', 'a_custom_colorscale'
+    'a_scale_var', 'a_scale_coord_var', 'a_custom_colorscale', 'a_coord_sys'
 ]
 
 def _render_analysis_variable_section(data_pack, plotter, analysis_type):
@@ -71,17 +72,25 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
             label_1 = "First Variable" if is_scatter else ("Primary Variable" if is_2d_hist else "Variable")
             label_2 = "Second Variable" if is_scatter else ("Secondary Variable" if is_2d_hist else "Coordinate Variable")
 
-            ordered = []
-            base_vars  = plotter.get_plottable_variables(sel_group)
+            base_vars  = plotter.get_plottable_variables(sel_group, exclude_vectors=True)
             coord_vars = plotter.get_coordinate_variables(sel_group)
             extra_coords = [c for c in coord_vars if c not in base_vars]
-            if base_vars and extra_coords:
-                ordered = base_vars[:-1] + extra_coords + base_vars[-1:]
-            else:
-                ordered = base_vars + extra_coords
+            
+            combined_vars = base_vars + extra_coords
+            ordered       = plotter.sort_variables(combined_vars, sel_group)
                 
             list_1 = ordered
             list_2 = ordered if (is_scatter or is_2d_hist) else plotter.get_coordinate_variables(sel_group)
+
+            v1_state = st.session_state.get('a_variable', list_1[0] if list_1 else "")
+            v2_state = st.session_state.get('a_coord_var', list_2[0] if list_2 else "")
+            v1_lower = v1_state.lower() if v1_state else ""
+            v2_lower = v2_state.lower() if v2_state else ""
+            
+            has_az   = "azimuth_north" in [v1_lower, v2_lower] or "azimuth_motion" in [v1_lower, v2_lower]
+            has_dist = "dist_from_center" in [v1_lower, v2_lower]
+            is_polar_eligible = has_az and has_dist and not (analysis_type == "Histogram Analysis (1D)")
+            is_polar = is_polar_eligible and st.session_state.get('a_coord_sys') == "Polar"
 
             if list_1:
                 init_state('a_variable', list_1[0])
@@ -93,7 +102,9 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
                     variable = st.selectbox(label_1, list_1, key='a_variable', on_change=reset_a_var_dependencies, format_func=lambda x: plotter._get_var_display_name(sel_group, x))
                 with v1_col2:
                     init_state('a_scale_var', "Linear scale")
-                    st.selectbox("Scale:", ["Linear scale", "Log scale"], key='a_scale_var', label_visibility="collapsed")
+                    if is_polar and st.session_state.a_scale_var != "Linear scale":
+                        st.session_state.a_scale_var = "Linear scale"
+                    st.selectbox("Plot on:", ["Linear scale", "Log scale"], key='a_scale_var', disabled=is_polar)
             else:
                 st.warning("No valid variables found.")
 
@@ -107,7 +118,9 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
                     coord_var = st.selectbox(label_2, list_2, key='a_coord_var', format_func=lambda x: plotter._get_var_display_name(sel_group, x), disabled=(analysis_type == "Histogram Analysis (1D)"))
                 with v2_col2:
                     init_state('a_scale_coord_var', "Linear scale")
-                    st.selectbox("Scale:", ["Linear scale", "Log scale"], key='a_scale_coord_var', disabled=(analysis_type == "Histogram Analysis (1D)"), label_visibility="collapsed")
+                    if is_polar and st.session_state.a_scale_coord_var != "Linear scale":
+                        st.session_state.a_scale_coord_var = "Linear scale"
+                    st.selectbox("Plot on:", ["Linear scale", "Log scale"], key='a_scale_coord_var', disabled=(analysis_type == "Histogram Analysis (1D)" or is_polar))
             else:
                 st.warning("No valid secondary variables found for this group.")
 
@@ -166,36 +179,69 @@ def render_analysis_controls() -> AnalysisIntent:
                 format_func=lambda x: COLORSCALE_NAMES.get(x, x)
             )
         intent.custom_colorscale = custom_colorscale
+
+        v1_lower = intent.variable.lower() if intent.variable else ""
+        v2_lower = intent.coord_var.lower() if intent.coord_var else ""
+        has_az   = "azimuth_north" in [v1_lower, v2_lower] or "azimuth_motion" in [v1_lower, v2_lower]
+        has_dist = "dist_from_center" in [v1_lower, v2_lower]
+        is_polar_eligible = has_az and has_dist and not is_1d_hist
+
+        if not is_polar_eligible and st.session_state.get('a_coord_sys') == "Polar":
+            st.session_state.a_coord_sys = "Cartesian"
+
+        c_sys1, c_sys2 = st.columns([1.4, 1.8])
+        with c_sys1:
+            sidebar_label("Coordinate System:", size='label', enabled=is_polar_eligible)
+        with c_sys2:
+            init_state('a_coord_sys', "Cartesian")
+            coord_sys = st.selectbox(
+                "Coordinate System", ["Cartesian", "Polar"],
+                key='a_coord_sys', label_visibility="collapsed", disabled=not is_polar_eligible
+            )
+        intent.coordinate_system = coord_sys
+        is_polar = (coord_sys == "Polar")
         
         section_divider()
 
         st.markdown("#### Histogram Controls")
 
-        c1, c2, c3 = st.columns([1.4, 1.0, 0.8])
-        with c1: sidebar_label("Num. of Intervals (X):", size='label', enabled=not is_scatter)
-        with c2:
-            init_state('a_bin_mode_x', "Default")
-            bin_mode_x = st.selectbox("X Intervals Option", ["Default", "Manual:"], key='a_bin_mode_x', label_visibility="collapsed", disabled=is_scatter)
-        with c3:
-            if bin_mode_x == "Default" or is_scatter:
-                st.number_input("Bins Dummy X", value=DEFAULT_HIST_BINS, disabled=True, key='dummy_bin_x', label_visibility="collapsed")
-                intent.hist_bins_x = DEFAULT_HIST_BINS if not is_scatter else None
-            else:
-                init_state('a_bin_manual_x', DEFAULT_HIST_BINS)
-                intent.hist_bins_x = st.number_input("Bins X", min_value=1, max_value=1000, step=1, key='a_bin_manual_x', label_visibility="collapsed", disabled=is_scatter)
+        effective_reverse = False if is_polar else st.session_state.get('a_reverse_axes', False)
+        x_var_lower = v1_lower if effective_reverse else v2_lower
+        y_var_lower = v2_lower if effective_reverse else v1_lower
 
-        c4, c5, c6 = st.columns([1.4, 1.0, 0.8])
-        with c4: sidebar_label("Num. of Intervals (Y):", size='label', enabled=is_2d)
-        with c5:
-            init_state('a_bin_mode_y', "Default")
-            bin_mode_y = st.selectbox("Y Intervals Option", ["Default", "Manual:"], key='a_bin_mode_y', label_visibility="collapsed", disabled=not is_2d)
-        with c6:
-            if bin_mode_y == "Default" or not is_2d:
-                st.number_input("Bins Dummy Y", value=DEFAULT_HIST_BINS, disabled=True, key='dummy_bin_y', label_visibility="collapsed")
-                intent.hist_bins_y = DEFAULT_HIST_BINS if is_2d else None
-            else:
-                init_state('a_bin_manual_y', DEFAULT_HIST_BINS)
-                intent.hist_bins_y = st.number_input("Bins Y", min_value=1, max_value=1000, step=1, key='a_bin_manual_y', label_visibility="collapsed", disabled=not is_2d)
+        is_x_az = 'azimuth' in x_var_lower
+        is_y_az = 'azimuth' in y_var_lower
+
+        lbl_x = "Bins (Az):" if (is_polar and is_x_az) else ("Bins (Rad):" if is_polar else "Bins (X):")
+        lbl_y = "Bins (Az):" if (is_polar and is_y_az) else ("Bins (Rad):" if is_polar else "Bins (Y):")
+
+        def_x = DEFAULT_HIST_BINS
+        def_y = DEFAULT_HIST_BINS
+        if is_polar:
+            def_x = DEFAULT_HIST_BINS_AZIMUTH if is_x_az else DEFAULT_HIST_BINS_RADIAL
+            def_y = DEFAULT_HIST_BINS_AZIMUTH if is_y_az else DEFAULT_HIST_BINS_RADIAL
+
+        c_lx, c_ix, c_ly, c_iy = st.columns([0.8, 1.2, 0.8, 1.2])
+        
+        with c_lx:
+            # X bins are now enabled for Scatter to support marginal calculation!
+            sidebar_label(lbl_x, size='label')
+        with c_ix:
+            val_x = st.number_input(
+                "Bins X Input", min_value=1, max_value=1000, value=def_x, step=1, 
+                key=f"bin_x_auto_{is_polar}_{is_x_az}", label_visibility="collapsed"
+            )
+            intent.hist_bins_x = val_x
+
+        with c_ly:
+            # Y bins are enabled for Scatter to support marginal calculation!
+            sidebar_label(lbl_y, size='label', enabled=not is_1d_hist)
+        with c_iy:
+            val_y = st.number_input(
+                "Bins Y Input", min_value=1, max_value=1000, value=def_y, step=1, 
+                key=f"bin_y_auto_{is_polar}_{is_y_az}", disabled=is_1d_hist, label_visibility="collapsed"
+            )
+            intent.hist_bins_y = val_y if not is_1d_hist else None
 
         c7, c8 = st.columns([1.4, 1.8])
         with c7: sidebar_label("Normalization:", size='label', enabled=not is_scatter)
@@ -207,19 +253,41 @@ def render_analysis_controls() -> AnalysisIntent:
             intent.normalization = norm_val if not is_scatter else "None"
                 
         init_state('a_reverse_axes', False)
-        st.checkbox("Reverse X and Y axes", key="a_reverse_axes")
+        if is_polar and st.session_state.a_reverse_axes:
+            st.session_state.a_reverse_axes = False
+        st.checkbox("Reverse X and Y axes", key="a_reverse_axes", disabled=is_polar)
         intent.reverse_axes = st.session_state.a_reverse_axes
 
         init_state('a_render_as_line', False)
         if not is_1d_hist and st.session_state.a_render_as_line: st.session_state.a_render_as_line = False
         st.checkbox("Render as line plot", key="a_render_as_line", disabled=not is_1d_hist)
         intent.render_as_line = st.session_state.a_render_as_line if is_1d_hist else False
+        
+        init_state('a_show_kde', False)
+        if is_scatter and st.session_state.a_show_kde: st.session_state.a_show_kde = False
+        st.checkbox("Overlay Density Curve/Contours (KDE)", key="a_show_kde", disabled=is_scatter)
+        intent.show_kde = st.session_state.a_show_kde if not is_scatter else False
+
+        # Marginal Checkbox: Now disabled for BOTH 1D histograms and Scatter plots
+        init_state('a_show_marginals', False)
+        
+        # We disable it if it's 1D (useless) or Scatter (per your preference)
+        marginals_allowed = not (is_1d_hist or is_scatter)
+        
+        if not marginals_allowed:
+            st.session_state.a_show_marginals = False
+
+        st.checkbox(
+            "Show Marginal Distributions", 
+            key="a_show_marginals", 
+            disabled=not marginals_allowed,
+            help="Available for 2D Histogram Analysis only." if is_scatter else None
+        )
+        intent.show_marginals = st.session_state.a_show_marginals if marginals_allowed else False
                 
         section_divider()
         st.markdown("#### Scatter Controls")
         
-        st.checkbox("Show Trendline", value=False, key="a_scatter_trendline", disabled=not is_scatter)
-
         color_opts = ["None", "Variable:"]
         init_state('a_scatter_color', "None")
         if st.session_state.a_scatter_color not in color_opts: st.session_state.a_scatter_color = "None"
@@ -240,7 +308,6 @@ def render_analysis_controls() -> AnalysisIntent:
         init_state('a_scatter_marker_size', 100)
         st.slider("Scatter Marker Size", min_value=10, max_value=200, step=10, format="%d%%", key="a_scatter_marker_size", disabled=not is_scatter, label_visibility="collapsed")
 
-        intent.scatter_trendline  = st.session_state.get('a_scatter_trendline', False) if is_scatter else False
         intent.scatter_color_var  = st.session_state.get('a_scatter_color_var') if color_by_var else None
         intent.scatter_marker_size = st.session_state.get('a_scatter_marker_size', 100) if is_scatter else 100
 

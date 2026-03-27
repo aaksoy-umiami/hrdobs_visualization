@@ -114,11 +114,12 @@ def render_analysis_tab():
                 normalization=intent.normalization,
                 reverse_axes=intent.reverse_axes,
                 render_as_line=intent.render_as_line,
+                show_kde=intent.show_kde
             )
             if fig:
                 _, col_center, _ = st.columns([1, 8, 1])
                 with col_center:
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width="stretch")
                 df_grp = data_pack['data'].get(intent.sel_group)
                 if df_grp is not None and plot_var in df_grp.columns:
                     vals = df_grp[plot_var].dropna().values
@@ -137,12 +138,19 @@ def render_analysis_tab():
                     nbinsy=intent.hist_bins_y,
                     reverse_axes=intent.reverse_axes,
                     normalization=intent.normalization,
-                    custom_colorscale=intent.custom_colorscale
+                    custom_colorscale=intent.custom_colorscale,
+                    coordinate_system=intent.coordinate_system,
+                    show_kde=intent.show_kde,
+                    show_marginals=intent.show_marginals
                 )
                 if fig:
                     _, col_center, _ = st.columns([1, 8, 1])
                     with col_center:
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, width="stretch")
+                        if intent.coordinate_system == "Polar" and intent.show_kde:
+                            st.caption("ℹ️ Density contours (KDE) are currently only overlaid in Cartesian coordinates.")
+                        if intent.coordinate_system == "Polar" and intent.show_marginals:
+                            st.caption("ℹ️ Marginal distributions are currently only available in Cartesian coordinates.")
                 else:
                     st.warning("Could not generate 2D histogram for these variables.")
             else:
@@ -150,18 +158,94 @@ def render_analysis_tab():
 
         elif intent.analysis_type == "Scatter Analysis":
             if plot_coord:
-                fig = plotter.plot_scatter(
+                if 'active_trendlines' not in st.session_state:
+                    st.session_state.active_trendlines = []
+                
+                current_selection = None
+                if "scatter_plot_interactive" in st.session_state:
+                    sel_event = st.session_state["scatter_plot_interactive"]
+                    if sel_event and "selection" in sel_event and sel_event["selection"].get("points"):
+                        current_selection = [
+                            p["point_index"] for p in sel_event["selection"]["points"]
+                            if p.get("curve_number", 0) == 0
+                        ]
+                        if not current_selection:
+                            current_selection = None
+
+                selection_mode = st.session_state.get('scatter_sel_mode', 'Include')
+
+                ret = plotter.plot_scatter(
                     intent.sel_group, plot_var, plot_coord,
+                    nbinsx=intent.hist_bins_x,
+                    nbinsy=intent.hist_bins_y,
                     color_var=intent.scatter_color_var,
-                    show_trendline=intent.scatter_trendline,
                     reverse_axes=intent.reverse_axes,
                     marker_size_pct=intent.scatter_marker_size,
-                    custom_colorscale=intent.custom_colorscale
+                    custom_colorscale=intent.custom_colorscale,
+                    coordinate_system=intent.coordinate_system,
+                    active_trendlines=st.session_state.active_trendlines,
+                    selected_indices=current_selection,
+                    selection_mode=selection_mode,
+                    show_marginals=intent.show_marginals,
+                    show_kde=intent.show_kde
                 )
-                if fig:
+                
+                if ret is not None:
+                    fig, stats_list = ret
+                    
                     _, col_center, _ = st.columns([1, 8, 1])
                     with col_center:
-                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        st.plotly_chart(
+                            fig, 
+                            width="stretch", 
+                            on_select="rerun", 
+                            selection_mode=('box', 'lasso'),
+                            key="scatter_plot_interactive"
+                        )
+
+                        st.write("") 
+                        _, c_txt1, c_drop, c_txt2, _ = st.columns([0.5, 3.0, 1.5, 5.5, 0.5])
+                        with c_txt1:
+                            st.markdown("<div style='text-align: right; margin-top: 5px; font-size: 15px;'>Use Box/Lasso options to</div>", unsafe_allow_html=True)
+                        with c_drop:
+                            st.selectbox("Mode", ["Include", "Exclude"], key="scatter_sel_mode", label_visibility="collapsed")
+                        with c_txt2:
+                            st.markdown("<div style='margin-top: 5px; font-size: 15px;'>points from calculations below. Double-click on plot to reset.</div>", unsafe_allow_html=True)
+                        st.write("") 
+
+                        if stats_list:
+                            import pandas as pd
+                            if current_selection:
+                                mode_lbl = "Included Subset" if selection_mode == "Include" else "Filtered Subset"
+                                st.markdown(f"##### Regression Fits ({mode_lbl})")
+                            else:
+                                st.markdown("##### Regression Fits (All Data)")
+                            
+                            df_stats = pd.DataFrame(stats_list)
+                            df_stats.insert(0, "Plot", df_stats["Fit Name"].isin(st.session_state.active_trendlines))
+                            
+                            edited_df = st.data_editor(
+                                df_stats,
+                                column_config={
+                                    "Plot": st.column_config.CheckboxColumn("Plot", default=False),
+                                    "Fit Name": st.column_config.TextColumn("Fit Type", disabled=True),
+                                    "Equation": st.column_config.TextColumn("Equation", disabled=True),
+                                    "R": st.column_config.TextColumn("R", disabled=True),
+                                    "R²": st.column_config.TextColumn("R²", disabled=True),
+                                },
+                                hide_index=True,
+                                width="stretch",
+                                key="trendline_data_editor"
+                            )
+                            
+                            new_active = edited_df[edited_df["Plot"]]["Fit Name"].tolist()
+                            if new_active != st.session_state.active_trendlines:
+                                st.session_state.active_trendlines = new_active
+                                st.rerun()
+                                
+                        elif intent.coordinate_system == "Polar":
+                            st.caption("ℹ️ Regression trendlines and marginals are only available in the Cartesian coordinate system.")
                 else:
                     st.warning("Could not generate scatter plot for these variables.")
             else:

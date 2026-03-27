@@ -87,11 +87,16 @@ class StormPlotterBase:
 
         return cmap, cmin, cmax, cmid, cb_title, cb_tickvals, cb_ticktext
 
-    def _ensure_dist_from_center(self, group_name):
+    def _ensure_derived_spatial_coords(self, group_name):
+        """
+        Dynamically calculates Distance from Center, Azimuth from North, 
+        and Azimuth from Storm Motion if not already present.
+        """
         if group_name not in self.data or group_name.startswith('track_'):
             return
         df = self.data[group_name]
-        if 'dist_from_center' in df.columns:
+        
+        if all(col in df.columns for col in ['dist_from_center', 'azimuth_north', 'azimuth_motion']):
             return
 
         from datetime import datetime, timezone
@@ -128,42 +133,93 @@ class StormPlotterBase:
         valid = np.isfinite(te)
         if valid.sum() < 2:
             return
+            
         order    = np.argsort(te[valid])
         t_epochs = te[valid][order]
         t_lats   = tr[lat_col].values.astype(float)[valid][order]
         t_lons   = tr[lon_col].values.astype(float)[valid][order]
 
+        dlat_tr = np.diff(t_lats)
+        dlon_tr = np.diff(t_lons)
+        mean_lat_tr = np.radians((t_lats[:-1] + t_lats[1:]) / 2.0)
+        dy_tr = EARTH_R_KM * np.radians(dlat_tr)
+        dx_tr = EARTH_R_KM * np.radians(dlon_tr) * np.cos(mean_lat_tr)
+        headings = np.degrees(np.arctan2(dx_tr, dy_tr)) % 360
+        mean_heading = float(np.nanmedian(headings)) if len(headings) > 0 else 0.0
+
         gcols  = {c.lower(): c for c in df.columns}
         lat_c  = next((gcols[c] for c in ['lat', 'latitude']  if c in gcols), None)
         lon_c  = next((gcols[c] for c in ['lon', 'longitude'] if c in gcols), None)
         time_c = gcols.get('time')
+        
         if not (lat_c and lon_c and time_c):
             return
 
         obs_epochs = np.array([_ts(v) for v in df[time_c].values])
         cen_lats   = np.interp(obs_epochs, t_epochs, t_lats)
         cen_lons   = np.interp(obs_epochs, t_epochs, t_lons)
+        
         dlat       = np.radians(df[lat_c].values.astype(float) - cen_lats)
         dlon       = np.radians(df[lon_c].values.astype(float) - cen_lons)
         mean_lat   = np.radians((df[lat_c].values.astype(float) + cen_lats) / 2.0)
+        
         x_km       = EARTH_R_KM * dlon * np.cos(mean_lat)
         y_km       = EARTH_R_KM * dlat
+        
         dist       = np.sqrt(x_km**2 + y_km**2)
+        az_north   = np.degrees(np.arctan2(x_km, y_km)) % 360
+        az_motion  = (az_north - mean_heading) % 360
 
-        nan_mask      = (~np.isfinite(obs_epochs) |
-                         df[lat_c].isna().values | df[lon_c].isna().values)
-        dist[nan_mask] = np.nan
+        nan_mask   = (~np.isfinite(obs_epochs) | df[lat_c].isna().values | df[lon_c].isna().values)
+        
+        dist[nan_mask]      = np.nan
+        az_north[nan_mask]  = np.nan
+        az_motion[nan_mask] = np.nan
+
         df['dist_from_center'] = dist
+        df['azimuth_north']    = az_north
+        df['azimuth_motion']   = az_motion
+        
         if group_name not in self.var_attrs:
             self.var_attrs[group_name] = {}
-        self.var_attrs[group_name]['dist_from_center'] = {
-            'units': 'km', 'long_name': 'Distance from Storm Center (Computed)'
-        }
+            
+        self.var_attrs[group_name]['dist_from_center'] = {'units': 'km', 'long_name': 'Distance from Storm Center (Computed)'}
+        self.var_attrs[group_name]['azimuth_north']    = {'units': 'deg', 'long_name': 'Azimuth from North (Computed)'}
+        self.var_attrs[group_name]['azimuth_motion']   = {'units': 'deg', 'long_name': 'Azimuth from Storm Motion (Computed)'}
+
+    def sort_variables(self, var_list, group_name):
+        """
+        Unified sorting method for all UI dropdowns.
+        Ensures standard variables come first, standard coordinates (Lat/Lon) second, 
+        and derived coordinates (Distance, Azimuths) absolute last.
+        """
+        def _sort_key(c):
+            c_lower = c.lower()
+            cfg = GLOBAL_VAR_CONFIG.get(c_lower, {})
+            is_derived = cfg.get('is_derived', False)
+            is_coord   = cfg.get('is_coord', False)
+            weight     = cfg.get('sort_weight', 50)
+            
+            if is_derived and is_coord:
+                tier = 3
+            elif is_coord:
+                tier = 2
+            elif is_derived:
+                tier = 1
+            else:
+                tier = 0
+                
+            disp = self._get_var_display_name(group_name, c)
+            return f"{tier}_{weight:03d}_{disp}"
+            
+        # Use dict.fromkeys to strip duplicates before sorting
+        unique_vars = list(dict.fromkeys(var_list))
+        return sorted(unique_vars, key=_sort_key)
 
     def get_plottable_variables(self, sel_group, active_z_col=None, exclude_vectors=False):
         if sel_group not in self.data:
             return []
-        self._ensure_dist_from_center(sel_group)
+        self._ensure_derived_spatial_coords(sel_group)
 
         df         = self.data[sel_group]
         valid_cols = []
@@ -183,23 +239,12 @@ class StormPlotterBase:
                 continue
             valid_cols.append(col)
 
-        def custom_sort(c):
-            c_lower    = c.lower()
-            cfg        = GLOBAL_VAR_CONFIG.get(c_lower, {})
-            is_coord   = cfg.get('is_coord',   False)
-            is_derived = cfg.get('is_derived', False)
-            if   is_coord and is_derived: tier = '3'
-            elif is_coord:                tier = '2'
-            elif is_derived:              tier = '1'
-            else:                         tier = '0'
-            return f'{tier}_{c_lower}'
-
-        return sorted(valid_cols, key=custom_sort)
+        return self.sort_variables(valid_cols, sel_group)
 
     def get_coordinate_variables(self, group_name):
         if group_name not in self.data:
             return []
-        self._ensure_dist_from_center(group_name)
+        self._ensure_derived_spatial_coords(group_name)
         df           = self.data[group_name]
         valid_coords = []
 
@@ -211,13 +256,7 @@ class StormPlotterBase:
         if not valid_coords:
             valid_coords = [c for c in df.columns if df[c].dtype != 'object']
 
-        def coord_sort(c):
-            c_lower = c.lower()
-            cfg     = GLOBAL_VAR_CONFIG.get(c_lower, {})
-            tier    = '1' if (cfg.get('is_coord', False) and cfg.get('is_derived', False)) else '0'
-            return f'{tier}_{c_lower}'
-
-        return sorted(valid_coords, key=coord_sort)
+        return self.sort_variables(valid_coords, group_name)
 
     def _get_var_display_name(self, group_name, variable):
         if variable.lower() == 'time':
@@ -299,9 +338,14 @@ class StormPlotterBase:
         if storm_sub:
             lines.append(f"<span style='font-size:{FS_PLOT_AXIS}px'>{storm_sub}</span>")
 
-        return "<br>".join(lines)
+        # THE FIX: Prepend a <br> to explicitly push the text block down
+        # away from the absolute top of the container where the modebar lives.
+        return "<br>" + "<br>".join(lines)
 
-    def _title_top_margin(self, title: str, gap: int = 20) -> int:
+    def _title_top_margin(self, title: str, gap: int = 45) -> int:
+        # THE FIX: Bumped the default gap from 20 to 45.
+        # This ensures the plot box itself drops down enough to make room 
+        # for both the lowered title and the empty hover zone above it.
         n_lines = title.count('<br>') + 1
         height  = FS_PLOT_TITLE
         height += max(0, n_lines - 1) * FS_PLOT_AXIS
@@ -366,13 +410,8 @@ class StormPlotterBase:
 
     def _apply_filters(self, df, req_cols=None, z_con=None, time_bounds=None, 
                        thinning_pct=None, domain_bounds=None, filter_spatial=True):
-        """
-        Centralized data filtering for plotting methods.
-        Applies dropna, vertical constraints, time bounds, random thinning, and domain bounding.
-        """
         plot_df = df.copy()
         
-        # 1. Drop NAs for required columns
         if req_cols:
             valid_cols = [c for c in req_cols if c and c in plot_df.columns]
             if valid_cols:
@@ -381,7 +420,6 @@ class StormPlotterBase:
 
         constraint_lbl = ""
 
-        # 2. Z-Constraint (Specific Level - e.g., 500 hPa ± 10)
         if z_con and z_con.get('col') in plot_df.columns:
             t_col = z_con['col']
             val = z_con['val']
@@ -393,28 +431,23 @@ class StormPlotterBase:
             constraint_lbl = f"Level: {val} ± {tol} {unit_str}"
         if plot_df.empty: return plot_df, constraint_lbl
 
-        # 3. Time Bounds
         if time_bounds and time_bounds.get('col') in plot_df.columns:
             t_col = time_bounds['col']
             t_min, t_max = time_bounds['min'], time_bounds['max']
             plot_df = plot_df[(plot_df[t_col] >= t_min) & (plot_df[t_col] <= t_max)]
         if plot_df.empty: return plot_df, constraint_lbl
 
-        # 4. Thinning
         if thinning_pct is not None and thinning_pct < 100:
             plot_df = plot_df.sample(frac=thinning_pct / 100.0, random_state=42)
         if plot_df.empty: return plot_df, constraint_lbl
 
-        # 5. Domain Bounds
         if domain_bounds:
-            # 5a. Vertical Domain Limits (Slider bounds)
             if 'z_min' in domain_bounds and domain_bounds.get('z_col') in plot_df.columns:
                 z_b_col = domain_bounds['z_col']
                 z_b_vals = plot_df[z_b_col] / 100.0 if domain_bounds.get('z_convert') else plot_df[z_b_col]
                 plot_df = plot_df[(z_b_vals >= domain_bounds['z_min']) & (z_b_vals <= domain_bounds['z_max'])]
             if plot_df.empty: return plot_df, constraint_lbl
 
-            # 5b. Spatial Lat/Lon Limits
             if filter_spatial:
                 cols_lower = {c.lower(): c for c in plot_df.columns}
                 x_col = next((cols_lower[c] for c in ['lon', 'longitude', 'clon'] if c in cols_lower), None)

@@ -100,7 +100,9 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         st.session_state.ui_sort_col   = 'Year'
         st.session_state.ui_sort_order = 'Ascending'
 
-    st.sidebar.markdown("### 🌍 Explorer Filters")
+    # UPDATED TITLE LINE HERE
+    st.sidebar.markdown(f"### 🌍 Explorer Filters (for {len(db_df)} Total Files)")
+    
     with st.sidebar.container(border=True):
         st.markdown("#### Filter by Storm Information")
 
