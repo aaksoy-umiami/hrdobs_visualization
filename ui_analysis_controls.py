@@ -13,6 +13,7 @@ from ui_viewer_file import render_file_upload_section
 from config import DEFAULT_HIST_BINS, DEFAULT_HIST_BINS_AZIMUTH, DEFAULT_HIST_BINS_RADIAL, AVAILABLE_COLORSCALES, GLOBAL_VAR_CONFIG, COLORSCALE_NAMES
 from ui_components import sidebar_label, section_divider, init_state, sync_namespace
 from plotter import StormPlotter
+from ui_layout import FS_BODY
 
 @dataclass
 class AnalysisIntent:
@@ -34,12 +35,13 @@ class AnalysisIntent:
     log_coord_var: bool = False
     custom_colorscale: Optional[str] = None
     coordinate_system: str = "Cartesian"
+    map_option: str = "None"
 
 _ANALYSIS_STATE_KEYS = [
     'a_sel_group', 'a_variable', 'a_coord_var', 'a_analysis_type', 
     'a_hist_norm', 'a_reverse_axes', 'a_render_as_line', 'a_show_kde', 'a_show_marginals',
     'a_scatter_color', 'a_scatter_color_var', 'a_scatter_marker_size',
-    'a_scale_var', 'a_scale_coord_var', 'a_custom_colorscale', 'a_coord_sys'
+    'a_scale_var', 'a_scale_coord_var', 'a_custom_colorscale', 'a_coord_sys', 'a_map_option', 'a_rev_cmap'
 ]
 
 def _render_analysis_variable_section(data_pack, plotter, analysis_type):
@@ -52,6 +54,8 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
     def reset_a_var_dependencies():
         if 'a_custom_colorscale' in st.session_state:
             del st.session_state['a_custom_colorscale']
+        if 'a_rev_cmap' in st.session_state:
+            del st.session_state['a_rev_cmap']
 
     with st.sidebar.container(border=True):
         st.markdown("### 📈 Plot Variable")
@@ -169,7 +173,8 @@ def render_analysis_controls() -> AnalysisIntent:
         cmaps = sorted(list(set(AVAILABLE_COLORSCALES + [default_cmap])))
         init_state('a_custom_colorscale', default_cmap)
         
-        c_cs1, c_cs2 = st.columns([1.4, 1.8])
+        # --- NEW INLINE LAYOUT FOR COLORSCALE ---
+        c_cs1, c_cs2 = st.columns([1.1, 1.8])
         with c_cs1:
             sidebar_label("Colorscale:", size='label', enabled=not is_1d_hist)
         with c_cs2:
@@ -178,6 +183,7 @@ def render_analysis_controls() -> AnalysisIntent:
                 key='a_custom_colorscale', label_visibility="collapsed", disabled=is_1d_hist,
                 format_func=lambda x: COLORSCALE_NAMES.get(x, x)
             )
+
         intent.custom_colorscale = custom_colorscale
 
         v1_lower = intent.variable.lower() if intent.variable else ""
@@ -200,6 +206,26 @@ def render_analysis_controls() -> AnalysisIntent:
             )
         intent.coordinate_system = coord_sys
         is_polar = (coord_sys == "Polar")
+        
+        # New Map Option Dropdown
+        lons = ['lon', 'longitude', 'clon']
+        lats = ['lat', 'latitude', 'clat']
+        is_lat_lon = ((v1_lower in lons and v2_lower in lats) or 
+                      (v1_lower in lats and v2_lower in lons))
+        map_eligible = is_lat_lon and not is_1d_hist
+        
+        c_map1, c_map2 = st.columns([1.4, 1.8])
+        with c_map1:
+            sidebar_label("Map Option:", size='label', enabled=map_eligible)
+        with c_map2:
+            init_state('a_map_option', "None")
+            if not map_eligible and st.session_state.a_map_option != "None":
+                st.session_state.a_map_option = "None"
+            map_option = st.selectbox(
+                "Map Option", ["None", "Show Map"],
+                key='a_map_option', label_visibility="collapsed", disabled=not map_eligible
+            )
+        intent.map_option = map_option
         
         section_divider()
 
@@ -298,6 +324,8 @@ def render_analysis_controls() -> AnalysisIntent:
         def reset_scatter_color_dep():
             if 'a_custom_colorscale' in st.session_state:
                 del st.session_state['a_custom_colorscale']
+            if 'a_rev_cmap' in st.session_state:
+                del st.session_state['a_rev_cmap']
                 
         if scatter_var_list:
             init_state('a_scatter_color_var', scatter_var_list[0])

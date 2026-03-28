@@ -256,11 +256,38 @@ class StormRelativeMixin:
                 showlegend=False, hoverinfo='skip'
             ))
 
-        hover_text = [
-            f"Range: {r:.1f} km<br>Az: {a:.1f}°<br>{variable}: {v:.2f}"
-            if not (np.isnan(r) or np.isnan(v)) else "NaN"
-            for r, a, v in zip(range_km, azimuth_deg, plot_df[variable].values)
-        ]
+        # --- HOVER DATA EXTRACTION ---
+        z_col_hover = next((cols_lower[c] for c in ['height', 'ght', 'altitude', 'elev', 'pres', 'pressure', 'p'] if c in cols_lower), None)
+        if z_col_hover and z_col_hover in plot_df.columns:
+            z_vals_hover = plot_df[z_col_hover].values.astype(float)
+        else:
+            z_vals_hover = np.full(len(plot_df), np.nan)
+
+        z_unit_hover = ""
+        z_name_hover = z_col_hover.replace('_', ' ').title() if z_col_hover else "Z"
+        if z_col_hover:
+            z_meta = self.var_attrs.get(group_name, {}).get(z_col_hover, {})
+            z_unit_hover = decode_metadata(z_meta.get('units', ''))
+            if 'Pa' in z_unit_hover and 'hPa' not in z_unit_hover:
+                z_vals_hover = z_vals_hover / 100.0
+                z_unit_hover = "hPa"
+                
+        def make_sr_hover(r, a, v, t, z):
+            parts = [f"Range: {r:.1f} km", f"Az: {a:.1f}°"]
+            if not pd.isna(v):
+                parts.append(f"{cb_title}: {v:,.2f}")
+            if not pd.isna(t):
+                s = f"{t:.0f}"
+                if len(s) == 14:
+                    parts.append(f"Time: {s[8:10]}:{s[10:12]}:{s[12:14]} UTC")
+            if not pd.isna(z):
+                parts.append(f"{z_name_hover}: {z:,.1f} {z_unit_hover}".strip())
+            return "<br>".join(parts)
+
+        t_vals = plot_df[time_col].values
+        hover_text = [make_sr_hover(r, a, v, t, z) for r, a, v, t, z in zip(range_km, azimuth_deg, plot_df[variable].values, t_vals, z_vals_hover)]
+
+
         fig.add_trace(go.Scatter(
             x=x_km, y=y_km,
             mode='markers',
@@ -540,11 +567,21 @@ class StormRelativeMixin:
         z_disp_label = 'Pressure' if is_pres else 'Height'
         z_unit_str   = z_units
 
-        hover_text = [
-            f"Range: {r:.1f} km<br>{z_disp_label}: {z:.1f} {z_unit_str}<br>{variable}: {v:.2f}"
-            if not (np.isnan(r) or np.isnan(z) or np.isnan(v)) else "NaN"
-            for r, z, v in zip(range_km, z_vals, color_vals)
-        ]
+        # --- HOVER DATA EXTRACTION ---
+        t_vals = plot_df[time_col].values
+        
+        def make_rh_hover(r, z, v, t):
+            parts = [f"Range: {r:.1f} km", f"{z_disp_label}: {z:.1f} {z_unit_str}"]
+            if not pd.isna(v):
+                parts.append(f"{display_name}: {v:,.2f}")
+            if not pd.isna(t):
+                s = f"{t:.0f}"
+                if len(s) == 14:
+                    parts.append(f"Time: {s[8:10]}:{s[10:12]}:{s[12:14]} UTC")
+            return "<br>".join(parts)
+            
+        hover_text = [make_rh_hover(r, z, v, t) for r, z, v, t in zip(range_km, z_vals, color_vals, t_vals)]
+
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(

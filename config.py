@@ -23,20 +23,23 @@ EXPECTED_META = [
 ]
 
 AVAILABLE_COLORSCALES = [
-    'Blues', 'Earth', 'hsv', 'Jet', 'Plasma', 
+    'Blues', 'Cividis', 'Earth', 'Greys', 'hsv', 'Inferno', 'Jet', 'Plasma', 
     'PuOr_r', 'RdBu_r', 'Turbo', 'Viridis', 'Viridis_r', 'YlGnBu'
 ]
 
 # --- USER-FRIENDLY COLORSCALE NAMES ---
 COLORSCALE_NAMES = {
     'Blues': 'Blues (Sequential)',
+    'Cividis': 'Cividis (Colorblind Safe)',
     'Earth': 'Earth (Terrain/Elevation)',
+    'Greys': 'Greys (Grayscale)',
     'hsv': 'HSV (Directional/Circular)',
-    'Jet': 'Jet (Classic Rainbow)',
+    'Inferno': 'Inferno (Dark to Bright)',
+    'Jet': 'Jet (Legacy Rainbow)',
     'Plasma': 'Plasma (Perceptually Uniform)',
     'PuOr_r': 'Purple-Orange (Diverging)',
     'RdBu_r': 'Red-Blue (Diverging)',
-    'Turbo': 'Turbo (Smooth Rainbow)',
+    'Turbo': 'Turbo (Modern Smooth Rainbow)',
     'Viridis': 'Viridis (Default Uniform)',
     'Viridis_r': 'Viridis Reversed',
     'YlGnBu': 'Yellow-Green-Blue (Sequential)'

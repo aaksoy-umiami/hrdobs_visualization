@@ -141,7 +141,8 @@ def render_analysis_tab():
                     custom_colorscale=intent.custom_colorscale,
                     coordinate_system=intent.coordinate_system,
                     show_kde=intent.show_kde,
-                    show_marginals=intent.show_marginals
+                    show_marginals=intent.show_marginals,
+                    map_option=intent.map_option
                 )
                 if fig:
                     _, col_center, _ = st.columns([1, 8, 1])
@@ -187,7 +188,8 @@ def render_analysis_tab():
                     selected_indices=current_selection,
                     selection_mode=selection_mode,
                     show_marginals=intent.show_marginals,
-                    show_kde=intent.show_kde
+                    show_kde=intent.show_kde,
+                    map_option=intent.map_option
                 )
                 
                 if ret is not None:

@@ -14,13 +14,15 @@ from ui_layout import (
     FS_PLOT_TICK, TARGET_PLOT_TICKS, PLOT_TITLE_Y,
 )
 from config import GLOBAL_VAR_CONFIG
+from data_utils import decode_metadata
 
 class ScatterMixin:
 
     def plot_scatter(self, group_name, variable, coord_var, color_var=None,
                      nbinsx=None, nbinsy=None, reverse_axes=False, marker_size_pct=100, 
                      custom_colorscale=None, coordinate_system="Cartesian", active_trendlines=None,
-                     selected_indices=None, selection_mode="Include", show_marginals=False, show_kde=False):
+                     selected_indices=None, selection_mode="Include", show_marginals=False, show_kde=False,
+                     map_option="None"):
                      
         if group_name not in self.data:
             return None
@@ -73,13 +75,19 @@ class ScatterMixin:
                 or 'pres' in y_var_col.lower()
                 or y_var_col.lower().endswith('_p')):
             yaxis_dict['autorange'] = 'reversed'
+            
+        if map_option == "Show Map" and coordinate_system == "Cartesian":
+            yaxis_dict['scaleanchor'] = 'x'
+            yaxis_dict['scaleratio'] = 1
 
+        # Apply time axis conversions
         x_vals = self._apply_time_axis(x_var_col, x_vals, xaxis_dict)
         y_vals = self._apply_time_axis(y_var_col, y_vals, yaxis_dict, is_x=False)
 
         fig = go.Figure()
         stats_list = []
         
+        # In Scatter mode, everything is always centered at 0.5
         title_x = 0.5
         
         fit_colors = {
@@ -92,12 +100,14 @@ class ScatterMixin:
 
         sz = max(1, int(5 * marker_size_pct / 100))
         
+        color_vals = np.full(len(plot_df), np.nan)
         if color_var and color_var in plot_df.columns:
             color_vals = plot_df[color_var].values
             var_conf   = GLOBAL_VAR_CONFIG.get(color_var.lower(), {})
             cmap       = custom_colorscale if custom_colorscale else var_conf.get('colorscale', 'Viridis')
             cmid       = var_conf.get('cmid', None)
             
+            # Colorbar matches the main plot height
             cb_dict = dict(len=0.8, thickness=15, tickfont=dict(size=FS_PLOT_TICK))
                 
             marker_dict = dict(
@@ -111,9 +121,45 @@ class ScatterMixin:
         else:
             marker_dict = dict(size=sz, color='#B6BABD')
 
+        # --- HOVER DATA EXTRACTION ---
+        cols_lower = {c.lower(): c for c in df.columns}
+        t_col = cols_lower.get('time')
+        t_vals = plot_df[t_col].values if t_col else np.full(len(plot_df), np.nan)
+
+        z_col_hover = next((cols_lower[c] for c in ['height', 'ght', 'altitude', 'elev', 'pres', 'pressure', 'p'] if c in cols_lower), None)
+        if z_col_hover and z_col_hover in plot_df.columns:
+            z_vals_hover = plot_df[z_col_hover].values.astype(float)
+        else:
+            z_vals_hover = np.full(len(plot_df), np.nan)
+
+        z_unit_hover = ""
+        z_name_hover = z_col_hover.replace('_', ' ').title() if z_col_hover else "Z"
+        if z_col_hover:
+            z_meta = self.var_attrs.get(group_name, {}).get(z_col_hover, {})
+            z_unit_hover = decode_metadata(z_meta.get('units', ''))
+            if 'Pa' in z_unit_hover and 'hPa' not in z_unit_hover:
+                z_vals_hover = z_vals_hover / 100.0
+                z_unit_hover = "hPa"
+
+        def make_scatter_hover(x, y, t, z, c_val):
+            parts = [f"{x_name}: {x:,.2f}", f"{y_name}: {y:,.2f}"]
+            if color_var:
+                parts.append(f"{color_var}: {c_val:,.2f}" if not pd.isna(c_val) else f"{color_var}: NaN")
+            if not pd.isna(t):
+                s = f"{t:.0f}"
+                if len(s) == 14:
+                    parts.append(f"Time: {s[8:10]}:{s[10:12]}:{s[12:14]} UTC")
+            if not pd.isna(z):
+                parts.append(f"{z_name_hover}: {z:,.1f} {z_unit_hover}".strip())
+            return "<br>".join(parts)
+            
+        text_arr = [make_scatter_hover(x, y, t, z, c) for x, y, t, z, c in zip(x_vals, y_vals, t_vals, z_vals_hover, color_vals)]
+
         trace_kwargs = dict(
             mode='markers',
             marker=marker_dict,
+            text=text_arr,
+            hoverinfo='text',
             name="Data",
             showlegend=False
         )
@@ -150,6 +196,7 @@ class ScatterMixin:
                 )
             )
         else:
+            # Use full domain for Scatter
             xaxis_dict['domain'] = [0.0, 1.0]
             yaxis_dict['domain'] = [0.0, 1.0]
 
@@ -157,6 +204,40 @@ class ScatterMixin:
                 x=x_vals, y=y_vals,
                 **trace_kwargs
             ))
+            
+            if map_option == "Show Map" and coordinate_system == "Cartesian":
+                is_x_lon = x_var_col.lower() in ['lon', 'longitude', 'clon']
+                is_y_lat = y_var_col.lower() in ['lat', 'latitude', 'clat']
+                is_x_lat = x_var_col.lower() in ['lat', 'latitude', 'clat']
+                is_y_lon = y_var_col.lower() in ['lon', 'longitude', 'clon']
+                
+                if (is_x_lon and is_y_lat) or (is_x_lat and is_y_lon):
+                    valid_mask = np.isfinite(x_vals) & np.isfinite(y_vals)
+                    if valid_mask.sum() > 0:
+                        x_valid = x_vals[valid_mask]
+                        y_valid = y_vals[valid_mask]
+                        x_min, x_max = np.min(x_valid), np.max(x_valid)
+                        y_min, y_max = np.min(y_valid), np.max(y_valid)
+                        
+                        lat_min, lat_max = (y_min, y_max) if is_y_lat else (x_min, x_max)
+                        lon_min, lon_max = (x_min, x_max) if is_x_lon else (y_min, y_max)
+                        domain_bounds = {'lat_min': lat_min, 'lat_max': lat_max, 'lon_min': lon_min, 'lon_max': lon_max}
+                        
+                        from basemap import get_basemap_traces
+                        traces = get_basemap_traces(domain_bounds)
+                        for t in traces:
+                            if not is_x_lon:
+                                t.x, t.y = t.y, t.x
+                            fig.add_trace(t)
+                            fig.data = (fig.data[-1],) + fig.data[:-1]
+
+                        # Enforce data limits so Plotly doesn't zoom out to the basemap
+                        x_pad = max((x_max - x_min) * 0.05, 0.05)
+                        y_pad = max((y_max - y_min) * 0.05, 0.05)
+                        fig.update_layout(
+                            xaxis_range=[x_min - x_pad, x_max + x_pad],
+                            yaxis_range=[y_min - y_pad, y_max + y_pad]
+                        )
 
             if active_indices is not None:
                 mask = np.zeros(len(x_vals), dtype=bool)
@@ -165,6 +246,7 @@ class ScatterMixin:
             else:
                 valid = np.isfinite(x_vals) & np.isfinite(y_vals)
 
+            # Mathematical Fits Calculation
             if valid.sum() >= 4:
                 x_fit = x_vals[valid]
                 y_fit = y_vals[valid]
@@ -254,6 +336,7 @@ class ScatterMixin:
                 )
             )
 
+        # Standard margins for scatter mode
         plot_margin_r = 40
         plot_margin_t = self._title_top_margin(nice_title) - 20
 

@@ -184,7 +184,7 @@ class HistogramMixin:
                           nbinsx=None, nbinsy=None, reverse_axes=False,
                           normalization="None", custom_colorscale=None,
                           coordinate_system="Cartesian", show_kde=False,
-                          show_marginals=False):
+                          show_marginals=False, map_option="None"):
         if group_name not in self.data:
             return None
 
@@ -254,6 +254,10 @@ class HistogramMixin:
                 or 'pres' in y_var_col.lower()
                 or y_var_col.lower().endswith('_p')):
             yaxis_dict['autorange'] = 'reversed'
+            
+        if map_option == "Show Map" and coordinate_system == "Cartesian":
+            yaxis_dict['scaleanchor'] = 'x'
+            yaxis_dict['scaleratio'] = 1
 
         x_vals = self._apply_time_axis(x_var_col, x_vals, xaxis_dict)
         y_vals = self._apply_time_axis(y_var_col, y_vals, yaxis_dict, is_x=False)
@@ -354,6 +358,35 @@ class HistogramMixin:
                 colorbar=cb_dict
             ))
             fig.update_layout(xaxis=xaxis_dict, yaxis=yaxis_dict)
+            
+            if map_option == "Show Map" and coordinate_system == "Cartesian":
+                is_x_lon = x_var_col.lower() in ['lon', 'longitude', 'clon']
+                is_y_lat = y_var_col.lower() in ['lat', 'latitude', 'clat']
+                is_x_lat = x_var_col.lower() in ['lat', 'latitude', 'clat']
+                is_y_lon = y_var_col.lower() in ['lon', 'longitude', 'clon']
+                
+                if (is_x_lon and is_y_lat) or (is_x_lat and is_y_lon):
+                    valid_mask = np.isfinite(x_vals) & np.isfinite(y_vals)
+                    if valid_mask.sum() > 0:
+                        x_valid = x_vals[valid_mask]
+                        y_valid = y_vals[valid_mask]
+                        lat_min, lat_max = (np.min(y_valid), np.max(y_valid)) if is_y_lat else (np.min(x_valid), np.max(x_valid))
+                        lon_min, lon_max = (np.min(x_valid), np.max(x_valid)) if is_x_lon else (np.min(y_valid), np.max(y_valid))
+                        domain_bounds = {'lat_min': lat_min, 'lat_max': lat_max, 'lon_min': lon_min, 'lon_max': lon_max}
+                        
+                        from basemap import get_basemap_traces
+                        traces = get_basemap_traces(domain_bounds)
+                        for t in traces:
+                            if not is_x_lon:
+                                t.x, t.y = t.y, t.x
+                            fig.add_trace(t)
+                            fig.data = (fig.data[-1],) + fig.data[:-1]
+
+                        # Enforce data limits so Plotly doesn't zoom out to the basemap
+                        fig.update_layout(
+                            xaxis_range=[x_edges[0], x_edges[-1]],
+                            yaxis_range=[y_edges[0], y_edges[-1]]
+                        )
 
             if show_kde:
                 try:

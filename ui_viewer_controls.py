@@ -52,15 +52,6 @@ class ViewerIntent:
     default_lon_min:  float           = 0.0
     default_lon_max:  float           = 0.0
 
-def _extract_strict_bound(data_pack, key):
-    for k, v in data_pack['meta'].get('info', {}).items():
-        if str(k).strip("[]b'\" ").lower() == key.lower():
-            try:
-                return float(decode_metadata(v))
-            except Exception:
-                return None
-    return None
-
 _VIEWER_STATE_KEYS = [
     'v_sel_group', 'v_variable', 'v_use_filter', 'v_vert_coord',
     'v_lvl_range', 'v_is_3d', 'v_3d_z', 'v_plot_track', 'v_sel_plat',
@@ -70,6 +61,15 @@ _VIEWER_STATE_KEYS = [
     'v_plot_err', 'v_vec_scale', 'v_show_basemap',
     'v_plot_type', 'v_sr_up', 'v_sr_track_grp', 'v_custom_colorscale'
 ]
+
+def _extract_strict_bound(data_pack, key):
+    for k, v in data_pack['meta'].get('info', {}).items():
+        if str(k).strip("[]b'\" ").lower() == key.lower():
+            try:
+                return float(decode_metadata(v))
+            except Exception:
+                return None
+    return None
 
 def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian"):
     available_groups = sorted(list(data_pack['data'].keys()))
@@ -126,7 +126,6 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
                     st.session_state.v_rh_z_col = rh_z_options[0]
                 rh_z_col = st.session_state.v_rh_z_col
 
-        # INCLUDE VECTORS ON TAB 2
         vars_list = plotter.get_plottable_variables(
             sel_group, active_z_col=exclude_col or rh_z_col, exclude_vectors=False
         )
@@ -271,11 +270,12 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
     with st.sidebar.container(border=True):
         st.markdown("### ⚙️ Plotting Options")
         
-        default_cmap = GLOBAL_VAR_CONFIG.get(plot_var.lower() if plot_var else "", {}).get('colorscale', 'Jet')
+        default_cmap = GLOBAL_VAR_CONFIG.get(plot_var.lower() if plot_var else "", {}).get('colorscale', 'Turbo')
         cmaps = sorted(list(set(AVAILABLE_COLORSCALES + [default_cmap])))
         init_state('v_custom_colorscale', default_cmap)
         
-        c_cs1, c_cs2 = st.columns([1, 1.5])
+        # Clean two-column layout for Colorscale
+        c_cs1, c_cs2 = st.columns([1.1, 1.8])
         with c_cs1:
             sidebar_label("Colorscale:", size='label')
         with c_cs2:
@@ -284,6 +284,7 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
                 key='v_custom_colorscale', label_visibility="collapsed",
                 format_func=lambda x: COLORSCALE_NAMES.get(x, x)
             )
+
         section_divider()
 
         is_rh  = (plot_type == "Radial-Height Profile")
@@ -342,7 +343,6 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
         if not options and st.session_state.v_use_filter: st.session_state.v_use_filter = False
             
         use_filter = st.checkbox("Filter by Level?", key='v_use_filter', disabled=not options or is_rh)
-        f_color = "inherit" if use_filter else CLR_MUTED
 
         if options:
             c_c, c_s = st.columns([1.2, 2.0])
@@ -458,7 +458,6 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
                 marker_sz = 100
             else:
                 init_state('v_marker_size', 100)
-                if not (10 <= st.session_state.v_marker_size <= 200): st.session_state.v_marker_size = 100
                 marker_sz = st.slider("Marker Size", min_value=10, max_value=200, step=10, format="%d%%", key='v_marker_size', label_visibility="collapsed")
                 vec_scale = 1.0
 

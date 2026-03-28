@@ -23,6 +23,7 @@ from plotter_base import (
     _FIG_HEIGHT_Z_THRESHOLD,
     _FIG_HEIGHT_Z_STRETCH,
 )
+from data_utils import decode_metadata
 
 class CartesianMixin:
     
@@ -161,6 +162,46 @@ class CartesianMixin:
             else:
                 color_array = base_color_array
 
+        # --- HOVER DATA EXTRACTION ---
+        t_col = cols_lower.get('time')
+        t_vals = plot_df[t_col].values if t_col else np.full(len(plot_df), np.nan)
+
+        if not z_col:
+            z_col_hover = next((cols_lower[c] for c in ['height', 'ght', 'altitude', 'elev', 'pres', 'pressure', 'p'] if c in cols_lower), None)
+        else:
+            z_col_hover = z_col
+
+        if z_col_hover and z_col_hover in plot_df.columns:
+            z_vals_hover = plot_df[z_col_hover].values.astype(float)
+        else:
+            z_vals_hover = np.full(len(plot_df), np.nan)
+
+        z_unit_hover = ""
+        z_name_hover = z_col_hover.replace('_', ' ').title() if z_col_hover else "Z"
+        if z_col_hover:
+            z_meta = self.var_attrs.get(group_name, {}).get(z_col_hover, {})
+            z_unit_hover = decode_metadata(z_meta.get('units', ''))
+            if 'Pa' in z_unit_hover and 'hPa' not in z_unit_hover:
+                z_vals_hover = z_vals_hover / 100.0
+                z_unit_hover = "hPa"
+
+        def make_hover(v, t, z):
+            parts = []
+            if not pd.isna(v):
+                if is_vector:
+                    parts.append(f"Magnitude: {v:,.1f}")
+                else:
+                    parts.append(f"{display_name}: {v:,.2f}")
+            if not pd.isna(t):
+                s = f"{t:.0f}"
+                if len(s) == 14:
+                    parts.append(f"Time: {s[8:10]}:{s[10:12]}:{s[12:14]} UTC")
+            if not pd.isna(z):
+                parts.append(f"{z_name_hover}: {z:,.1f} {z_unit_hover}".strip())
+            return "<br>".join(parts) if parts else "NaN"
+
+        text_arr = [make_hover(v, t, z) for v, t, z in zip(base_color_array, t_vals, z_vals_hover)]
+
         if is_vector:
             if is_3d and z_vals is not None:
                 w_col  = cols_lower.get('w')
@@ -180,7 +221,7 @@ class CartesianMixin:
                     x=lons, y=lats, z=z_vals, u=u_vals, v=v_vals, w=w_vals,
                     colorscale=cmap, cmin=cmin, cmax=cmax,
                     sizemode="raw", sizeref=cone_sizeref, anchor="tail",
-                    name=display_name, showscale=True,
+                    name=display_name, showscale=True, text=text_arr, hoverinfo='u+v+w+text',
                     colorbar=dict(len=0.8, thickness=15, tickfont=dict(size=FS_PLOT_TICK))
                 ))
             else:
@@ -193,8 +234,6 @@ class CartesianMixin:
                     colorbar=dict(len=0.8, thickness=15, tickfont=dict(size=FS_PLOT_TICK),
                                   tickvals=cb_tickvals, ticktext=cb_ticktext)
                 )
-                text_arr = [f"Magnitude: {m:.1f}" if not pd.isna(m) else "NaN"
-                            for m in base_color_array]
                 fig.add_trace(go.Scatter(
                     x=lons, y=lats, mode='markers', marker=marker_dict,
                     name=display_name, text=text_arr, hoverinfo='text+x+y',
@@ -210,7 +249,7 @@ class CartesianMixin:
                                   tickvals=cb_tickvals, ticktext=cb_ticktext),
                     cmin=cmin, cmax=cmax, cmid=cmid, opacity=0.8
                 ),
-                text=[f"{v:,.2f}" if not pd.isna(v) else "NaN" for v in base_color_array],
+                text=text_arr, hoverinfo='text+x+y+z',
                 name=group_name, showlegend=False
             ))
         else:
@@ -220,10 +259,9 @@ class CartesianMixin:
                               tickvals=cb_tickvals, ticktext=cb_ticktext),
                 cmin=cmin, cmax=cmax, cmid=cmid
             )
-            text_arr = [f"{v:,.2f}" if not pd.isna(v) else "NaN" for v in base_color_array]
             fig.add_trace(go.Scatter(
                 x=lons, y=lats, mode='markers', marker=marker_dict,
-                text=text_arr, name=group_name, showlegend=False
+                text=text_arr, hoverinfo='text+x+y', name=group_name, showlegend=False
             ))
 
         if show_center and self.metadata.get('storm_center'):
