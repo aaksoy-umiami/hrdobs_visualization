@@ -107,6 +107,7 @@ def _build_category_map(map_df: pd.DataFrame, unit: str) -> go.Figure:
             ))
 
     fig.update_layout(
+        width=880,
         title={'text': "Geographic Distribution by Intensity Category", 'x': 0.5, 'xanchor': 'center', 'xref': 'paper'},
         margin=PLOT_MARGINS_MAP, paper_bgcolor=CLR_PLOT_BG, plot_bgcolor=CLR_PLOT_BG, height=PLOT_HEIGHT_MAP,
         xaxis=dict(title='Longitude', range=[DOMAIN_LON_MIN, DOMAIN_LON_MAX], showgrid=True, gridcolor='rgba(200, 200, 200, 0.4)',
@@ -323,7 +324,12 @@ def render_explorer_summary_plots(df: pd.DataFrame, unit: str):
             st.info("No valid coordinates fall within the map domain.")
         else:
             fig_map = _build_category_map(map_df, unit)
-            st.plotly_chart(fig_map, width="stretch")
+            
+            # Wrap the map in columns to keep it centered on the page
+            col_left, col_center, col_right = st.columns([1, 4, 1])
+            with col_center:
+                # Use the new Streamlit API to prevent stretching
+                st.plotly_chart(fig_map, width="content")
 
         # =====================================================================
         # BOTTOM ROW: 3 Summary Plots
