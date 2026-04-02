@@ -106,14 +106,13 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
         df_sel = None
         cols_lower = {}
 
-        if 'TRACK' not in sel_group.upper():
+        if sel_group in data_pack['data']:
             df_sel     = data_pack['data'][sel_group]
             cols_lower = {c.lower(): c for c in df_sel.columns}
+            
+            # Allow h_col and p_col detection for ALL groups, including tracks
             h_col = next((cols_lower[c] for c in ['height', 'ght', 'altitude', 'elev'] if c in cols_lower), None)
             p_col = next((cols_lower[c] for c in ['pres', 'pressure', 'p'] if c in cols_lower), None)
-        elif sel_group in data_pack['data']:
-            df_sel     = data_pack['data'][sel_group]
-            cols_lower = {c.lower(): c for c in df_sel.columns}
 
         exclude_col = (st.session_state.get('v_vert_coord') if st.session_state.get('v_use_filter') else None)
 
