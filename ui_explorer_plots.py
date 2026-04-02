@@ -111,7 +111,7 @@ def _build_category_map(map_df: pd.DataFrame, unit: str) -> go.Figure:
         margin=PLOT_MARGINS_MAP, paper_bgcolor=CLR_PLOT_BG, plot_bgcolor=CLR_PLOT_BG, height=PLOT_HEIGHT_MAP,
         xaxis=dict(title='Longitude', range=[DOMAIN_LON_MIN, DOMAIN_LON_MAX], showgrid=True, gridcolor='rgba(200, 200, 200, 0.4)',
                    zeroline=False, dtick=10, showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
-                   tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY)),
+                   tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),constrain='domain'),
         yaxis=dict(title='Latitude', range=[DOMAIN_LAT_MIN, DOMAIN_LAT_MAX], showgrid=True, gridcolor='rgba(200, 200, 200, 0.4)',
                    zeroline=False, dtick=10, showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
                    scaleanchor='x', scaleratio=1, constrain='domain', tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY)),
