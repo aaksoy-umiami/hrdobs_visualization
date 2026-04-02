@@ -115,8 +115,14 @@ def _build_category_map(map_df: pd.DataFrame, unit: str) -> go.Figure:
         yaxis=dict(title='Latitude', range=[DOMAIN_LAT_MIN, DOMAIN_LAT_MAX], showgrid=True, gridcolor='rgba(200, 200, 200, 0.4)',
                    zeroline=False, dtick=10, showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
                    scaleanchor='x', scaleratio=1, constrain='domain', tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY)),
-        legend=dict(title=dict(text='Category'), yanchor="top", y=0.96, xanchor="left", x=0.01,
-                    bgcolor="rgba(255, 255, 255, 0.85)", bordercolor="black", borderwidth=1)
+        legend=dict(
+            title=dict(text='Category'), 
+            yanchor="middle", y=0.5,      # Centers the legend vertically
+            xanchor="left", x=1.02,       # Places the legend just outside the right edge of the plot
+            bgcolor="rgba(255, 255, 255, 0.85)", 
+            bordercolor="black", 
+            borderwidth=1
+        )
     )
     return fig
 
