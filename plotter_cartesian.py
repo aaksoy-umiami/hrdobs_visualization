@@ -16,7 +16,7 @@ from ui_layout import (
     CLR_PRIMARY, CLR_PLOT_BG, CLR_PLOT_GRID,
     FS_PLOT_TICK, TARGET_PLOT_TICKS, PLOT_TITLE_Y,
 )
-from config import GLOBAL_VAR_CONFIG, SURFACE_PRESSURE_HPA
+from config import SURFACE_PRESSURE_HPA
 from plotter_base import (
     _CONE_DOMAIN_FRACTION,
     _FIG_HEIGHT_BASE,
@@ -24,6 +24,9 @@ from plotter_base import (
     _FIG_HEIGHT_Z_STRETCH,
 )
 from data_utils import decode_metadata
+
+# Import our new vector rendering utilities!
+from vector_utils import build_2d_vector_traces, build_3d_vector_traces
 
 class CartesianMixin:
     
@@ -61,120 +64,23 @@ class CartesianMixin:
             return None, None
 
         lats, lons = plot_df[y_col].values, plot_df[x_col].values
-        _var_conf_pre = GLOBAL_VAR_CONFIG.get(variable.lower(), {})
-
-        _filtered_color_vals = plot_df[variable].values if variable in plot_df.columns else None
-        if _filtered_color_vals is not None and variable.lower() == 'time':
-            _tr = self._convert_time_to_relative(_filtered_color_vals)
-            _filtered_color_vals = _tr[0] if _tr is not None else _filtered_color_vals
-        _full_cmin = float(_var_conf_pre['cmin']) if _var_conf_pre.get('cmin') is not None else (
-            float(np.nanmin(_filtered_color_vals)) if _filtered_color_vals is not None else None)
-        _full_cmax = float(_var_conf_pre['cmax']) if _var_conf_pre.get('cmax') is not None else (
-            float(np.nanmax(_filtered_color_vals)) if _filtered_color_vals is not None else None)
-        if variable.lower() == 'time' and _full_cmin is not None:
-            _full_cmin = max(_full_cmin, -10800.0)
-            _full_cmax = min(_full_cmax,  10800.0)
-
-        fig = go.Figure()
-
-        z_vals = None
-        if is_3d and z_col and z_col in plot_df.columns:
-            z_vals = plot_df[z_col].values.copy()
-
-        var_conf = GLOBAL_VAR_CONFIG.get(variable.lower(), {})
-        cmap     = custom_colorscale if custom_colorscale else var_conf.get('colorscale', 'Jet')
-        cmid     = var_conf.get('cmid', None)
         sz_mult  = marker_size_pct / 100.0
+        is_vector = variable.lower() in ['wind_vec_hz', 'wind_vec_3d']
+        z_vals = plot_df[z_col].values.copy() if (is_3d and z_col and z_col in plot_df.columns) else None
 
-        display_name = self._get_var_display_name(group_name, variable)
-        cols_lower   = {c.lower(): c for c in plot_df.columns}
-        is_vector    = variable.lower() in ['wind_vec_hz', 'wind_vec_3d']
-        cb_title     = display_name.split('(')[-1].replace(')', '') if '(' in display_name else ""
-
-        cb_tickvals  = None
-        cb_ticktext  = None
-        magnitude_vals = None
-
-        if is_vector:
-            u_col, v_col   = cols_lower.get('u'), cols_lower.get('v')
-            u_vals         = plot_df[u_col].values
-            v_vals         = plot_df[v_col].values
-            magnitude_vals = plot_df[variable].values
-            base_color_array = magnitude_vals
-        elif is_track:
-            raw_track_vals = plot_df[variable].values if variable in plot_df.columns else None
-            if raw_track_vals is None or np.all(np.isnan(raw_track_vals)):
-                base_color_array = np.zeros(len(plot_df))
-            else:
-                base_color_array = raw_track_vals.copy().astype(float)
-                nan_mask = np.isnan(base_color_array)
-                if nan_mask.any():
-                    base_color_array[nan_mask] = np.nanmean(base_color_array)
-        else:
-            base_color_array = plot_df[variable].values
-
-        if variable.lower() == 'time':
-            _dummy_axis = {}
-            base_color_array = self._apply_time_axis(variable, base_color_array, _dummy_axis, is_x=False)
-            if 'tickvals' in _dummy_axis:
-                cb_tickvals = _dummy_axis['tickvals']
-                cb_ticktext = _dummy_axis['ticktext']
-            cb_title = "Time rel. to cycle center"
-
-        if is_track and variable not in plot_df.columns:
-            cmin         = 0
-            cmax         = 1
-            color_array  = base_color_array
-        else:
-            cmin_conf = var_conf.get('cmin')
-            cmax_conf = var_conf.get('cmax')
-            cmin = float(cmin_conf) if cmin_conf is not None else (
-                _full_cmin if _full_cmin is not None else float(np.nanmin(base_color_array)))
-            cmax = float(cmax_conf) if cmax_conf is not None else (
-                _full_cmax if _full_cmax is not None else float(np.nanmax(base_color_array)))
-
-            if color_scale == "Log scale":
-                if is_vector and is_3d:
-                    st.toast("⚠️ Log scale not supported for 3D vector cones. Using Linear.", icon="⚠️")
-                    color_array = base_color_array
-                else:
-                    pos_mask  = base_color_array > 0
-                    log_color = np.full_like(base_color_array, np.nan, dtype=float)
-                    log_color[pos_mask] = np.log10(base_color_array[pos_mask])
-                    color_array = log_color
-
-                    real_cmin = cmin if cmin > 0 else np.nanmin(base_color_array[pos_mask])
-                    real_cmax = cmax if cmax > 0 else np.nanmax(base_color_array[pos_mask])
-
-                    cmin = np.log10(real_cmin) if not np.isnan(real_cmin) else 0
-                    cmax = np.log10(real_cmax) if not np.isnan(real_cmax) else 1
-                    cmid = None
-
-                    min_pow = int(np.floor(cmin))
-                    max_pow = int(np.ceil(cmax))
-                    if max_pow - min_pow < 1:
-                        cb_tickvals = [cmin, cmax]
-                        cb_ticktext = [f"{10**cmin:.2g}", f"{10**cmax:.2g}"]
-                    else:
-                        cb_tickvals = np.arange(min_pow, max_pow + 1, dtype=float)
-                        cb_ticktext = [f"1e{int(p)}" if p < -3 or p > 3 else f"{10**p:g}"
-                                       for p in cb_tickvals]
-            else:
-                color_array = base_color_array
+        # =========================================================================
+        # REFACTORED: 1 Line replaces ~70 lines of color math!
+        # =========================================================================
+        color_array, cmap, cmin, cmax, cmid, cb_tickvals, cb_ticktext, cb_title, display_name, base_color_array = \
+            self._prepare_colorscale(group_name, variable, plot_df, color_scale, custom_colorscale, is_track)
+        # =========================================================================
 
         # --- HOVER DATA EXTRACTION ---
         t_col = cols_lower.get('time')
         t_vals = plot_df[t_col].values if t_col else np.full(len(plot_df), np.nan)
 
-        if not z_col:
-            z_col_hover = next((cols_lower[c] for c in ['height', 'ght', 'altitude', 'elev', 'pres', 'pressure', 'p'] if c in cols_lower), None)
-        else:
-            z_col_hover = z_col
-
-        if z_col_hover and z_col_hover in plot_df.columns:
-            z_vals_hover = plot_df[z_col_hover].values.astype(float)
-        else:
-            z_vals_hover = np.full(len(plot_df), np.nan)
+        z_col_hover = z_col if z_col else next((cols_lower[c] for c in ['height', 'ght', 'altitude', 'elev', 'pres', 'pressure', 'p'] if c in cols_lower), None)
+        z_vals_hover = plot_df[z_col_hover].values.astype(float) if (z_col_hover and z_col_hover in plot_df.columns) else np.full(len(plot_df), np.nan)
 
         z_unit_hover = ""
         z_name_hover = z_col_hover.replace('_', ' ').title() if z_col_hover else "Z"
@@ -188,58 +94,48 @@ class CartesianMixin:
         def make_hover(v, t, z):
             parts = []
             if not pd.isna(v):
-                if is_vector:
-                    parts.append(f"Magnitude: {v:,.1f}")
-                else:
-                    parts.append(f"{display_name}: {v:,.2f}")
+                if is_vector: parts.append(f"Magnitude: {v:,.1f}")
+                else:         parts.append(f"{display_name}: {v:,.2f}")
             if not pd.isna(t):
                 s = f"{t:.0f}"
-                if len(s) == 14:
-                    parts.append(f"Time: {s[8:10]}:{s[10:12]}:{s[12:14]} UTC")
-            if not pd.isna(z):
-                parts.append(f"{z_name_hover}: {z:,.1f} {z_unit_hover}".strip())
+                if len(s) == 14: parts.append(f"Time: {s[8:10]}:{s[10:12]}:{s[12:14]} UTC")
+            if not pd.isna(z): parts.append(f"{z_name_hover}: {z:,.1f} {z_unit_hover}".strip())
             return "<br>".join(parts) if parts else "NaN"
 
         text_arr = [make_hover(v, t, z) for v, t, z in zip(base_color_array, t_vals, z_vals_hover)]
 
+        fig = go.Figure()
+
         if is_vector:
+            u_col, v_col = cols_lower.get('u'), cols_lower.get('v')
+            u_vals, v_vals = plot_df[u_col].values, plot_df[v_col].values
+            
             if is_3d and z_vals is not None:
                 w_col  = cols_lower.get('w')
-                w_vals = (plot_df[w_col].values
-                          if variable.lower() == 'wind_vec_3d' and w_col
-                          else np.zeros_like(u_vals))
-                max_span = max(np.nanmax(lons) - np.nanmin(lons),
-                               np.nanmax(lats) - np.nanmin(lats))
-                if pd.isna(max_span) or max_span == 0:
-                    max_span = 1.0
-
-                target_length = max_span * _CONE_DOMAIN_FRACTION * vec_scale
-                max_mag       = np.nanmax(magnitude_vals)
-                cone_sizeref  = (target_length / max_mag) if max_mag > 0 else 1.0
-
-                fig.add_trace(go.Cone(
-                    x=lons, y=lats, z=z_vals, u=u_vals, v=v_vals, w=w_vals,
-                    colorscale=cmap, cmin=cmin, cmax=cmax,
-                    sizemode="raw", sizeref=cone_sizeref, anchor="tail",
-                    name=display_name, showscale=True, text=text_arr, hoverinfo='u+v+w+text',
-                    colorbar=dict(len=0.8, thickness=15, tickfont=dict(size=FS_PLOT_TICK))
-                ))
-            else:
-                angles      = np.degrees(np.arctan2(u_vals, v_vals))
-                marker_dict = dict(
-                    symbol='arrow-up',
-                    angle=angles, angleref='up',
-                    size=12 * sz_mult * vec_scale, color=color_array,
-                    colorscale=cmap, cmin=cmin, cmax=cmax, cmid=cmid,
-                    showscale=True,
-                    colorbar=dict(len=0.8, thickness=15, tickfont=dict(size=FS_PLOT_TICK),
-                                  tickvals=cb_tickvals, ticktext=cb_ticktext)
+                w_vals = plot_df[w_col].values if variable.lower() == 'wind_vec_3d' and w_col else np.zeros_like(u_vals)
+                
+                max_span_x = max(np.nanmax(lons) - np.nanmin(lons), np.nanmax(lats) - np.nanmin(lats))
+                z_span = np.nanmax(z_vals) - np.nanmin(z_vals)
+                z_scale = (z_span / max_span_x) if max_span_x > 0 else 1.0
+                
+                vector_traces = build_3d_vector_traces(
+                    x0=lons, y0=lats, z0=z_vals, u=u_vals, v=v_vals, w=w_vals,
+                    color_vals=color_array, cmap=cmap, cmin=cmin, cmax=cmax, cmid=cmid,
+                    cb_tickvals=cb_tickvals, cb_ticktext=cb_ticktext,
+                    hover_text=text_arr, display_name=display_name,
+                    vec_scale=vec_scale, z_scale_factor=z_scale, arrow_fraction=_CONE_DOMAIN_FRACTION
                 )
-                fig.add_trace(go.Scatter(
-                    x=lons, y=lats, mode='markers', marker=marker_dict,
-                    name=display_name, text=text_arr, hoverinfo='text+x+y',
-                    showlegend=False
-                ))
+                for trace in vector_traces: fig.add_trace(trace)
+                
+            else:
+                vector_traces = build_2d_vector_traces(
+                    x0=lons, y0=lats, u=u_vals, v=v_vals,
+                    color_vals=color_array, cmap=cmap, cmin=cmin, cmax=cmax, cmid=cmid,
+                    cb_tickvals=cb_tickvals, cb_ticktext=cb_ticktext,
+                    hover_text=text_arr, display_name=display_name,
+                    vec_scale=vec_scale, y_scale_factor=1.0, arrow_fraction=_CONE_DOMAIN_FRACTION
+                )
+                for trace in vector_traces: fig.add_trace(trace)
 
         elif is_3d and z_vals is not None:
             fig.add_trace(go.Scatter3d(
@@ -435,6 +331,7 @@ class CartesianMixin:
 def add_flight_tracks(fig, data_pack, track_mapping, plot_track, selected_platform,
                       is_3d, is_target_pres, proj_option="Bottom Only",
                       domain_bounds=None):
+    # Leave this exactly as it was!
     for plat, track_group in track_mapping.items():
         track_df  = data_pack['data'][track_group]
         t_lat_c   = next((c for c in track_df.columns if c.lower() in ['lat', 'latitude']),  None)

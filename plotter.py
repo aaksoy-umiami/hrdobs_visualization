@@ -19,12 +19,14 @@ from plotter_base import (
 # Import the specialized Plotting Mixins
 from plotter_cartesian import CartesianMixin, add_flight_tracks
 from plotter_storm_relative import StormRelativeMixin
+from plotter_radial_height import RadialHeightMixin
 from plotter_histogram import HistogramMixin
 from plotter_scatter import ScatterMixin
 
 class StormPlotter(
     CartesianMixin,
     StormRelativeMixin,
+    RadialHeightMixin,
     HistogramMixin,
     ScatterMixin,
     StormPlotterBase

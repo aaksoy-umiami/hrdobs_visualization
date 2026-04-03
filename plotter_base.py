@@ -462,3 +462,64 @@ class StormPlotterBase:
 
         return plot_df, constraint_lbl
     
+    def _prepare_colorscale(self, group_name, variable, plot_df, color_scale, custom_colorscale=None, is_track=False):
+        """Centralized helper to compute color arrays, log scales, and colorbar ticks."""
+        import numpy as np
+        from config import GLOBAL_VAR_CONFIG
+        
+        var_conf = GLOBAL_VAR_CONFIG.get(variable.lower(), {})
+        cmap = custom_colorscale if custom_colorscale else var_conf.get('colorscale', 'Jet')
+        cmid = var_conf.get('cmid', None)
+        
+        display_name = self._get_var_display_name(group_name, variable)
+        cb_title = display_name.split('(')[-1].replace(')', '') if '(' in display_name else display_name
+
+        cb_tickvals, cb_ticktext = None, None
+
+        if is_track and variable not in plot_df.columns:
+            base_color_array = np.zeros(len(plot_df))
+        else:
+            base_color_array = plot_df[variable].values.copy().astype(float)
+            if is_track:
+                nan_mask = np.isnan(base_color_array)
+                if nan_mask.any():
+                    base_color_array[nan_mask] = np.nanmean(base_color_array)
+
+        if variable.lower() == 'time':
+            _dummy_axis = {}
+            base_color_array = self._apply_time_axis(variable, base_color_array, _dummy_axis, is_x=False)
+            cb_tickvals, cb_ticktext = _dummy_axis.get('tickvals'), _dummy_axis.get('ticktext')
+            cb_title = "Time rel. to cycle center"
+
+        cmin_conf = var_conf.get('cmin')
+        cmax_conf = var_conf.get('cmax')
+        cmin = float(cmin_conf) if cmin_conf is not None else (float(np.nanmin(base_color_array)) if len(base_color_array) > 0 else 0)
+        cmax = float(cmax_conf) if cmax_conf is not None else (float(np.nanmax(base_color_array)) if len(base_color_array) > 0 else 1)
+        
+        if variable.lower() == 'time':
+            cmin, cmax = max(cmin, -10800.0), min(cmax, 10800.0)
+
+        color_array = base_color_array
+
+        if color_scale == "Log scale" and variable.lower() not in ['wind_vec_hz', 'wind_vec_3d', 'time']:
+            pos_mask = base_color_array > 0
+            log_color = np.full_like(base_color_array, np.nan, dtype=float)
+            log_color[pos_mask] = np.log10(base_color_array[pos_mask])
+            color_array = log_color
+            
+            real_cmin = cmin if cmin > 0 else (np.nanmin(base_color_array[pos_mask]) if pos_mask.any() else 1e-3)
+            real_cmax = cmax if cmax > 0 else (np.nanmax(base_color_array[pos_mask]) if pos_mask.any() else 1.0)
+            
+            cmin = np.log10(real_cmin) if not np.isnan(real_cmin) else 0
+            cmax = np.log10(real_cmax) if not np.isnan(real_cmax) else 1
+            cmid = None
+            
+            min_pow, max_pow = int(np.floor(cmin)), int(np.ceil(cmax))
+            if max_pow - min_pow < 1:
+                cb_tickvals, cb_ticktext = [cmin, cmax], [f"{10**cmin:.2g}", f"{10**cmax:.2g}"]
+            else:
+                cb_tickvals = np.arange(min_pow, max_pow + 1, dtype=float)
+                cb_ticktext = [f"1e{int(p)}" if p < -3 or p > 3 else f"{10**p:g}" for p in cb_tickvals]
+
+        return color_array, cmap, cmin, cmax, cmid, cb_tickvals, cb_ticktext, cb_title, display_name, base_color_array
+    
