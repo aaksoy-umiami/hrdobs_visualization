@@ -318,7 +318,7 @@ class StormRelativeMixin:
                 
             angles = np.degrees(np.arctan2(u_rot, v_rot))
             marker_dict = dict(
-                symbol='M 0,1 L 0,-1 L -0.3,-0.6 M 0,-1 L 0.3,-0.6', # Custom sleek stick arrow
+                symbol='arrow-up',
                 angle=angles, angleref='up',
                 size=12 * sz_mult * vec_scale,
                 color=color_vals,
@@ -645,7 +645,7 @@ class StormRelativeMixin:
             angles = np.degrees(np.arctan2(v_radial, w_vals))
             
             marker_dict = dict(
-                symbol='M 0,1 L 0,-1 L -0.3,-0.6 M 0,-1 L 0.3,-0.6', # Custom sleek stick arrow
+                symbol='arrow-up',
                 angle=angles, angleref='up',
                 size=12 * sz_mult * vec_scale,
                 color=_color_work,
