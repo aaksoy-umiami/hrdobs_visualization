@@ -105,6 +105,7 @@ def render_viewer_tab():
             domain_bounds=intent.domain_bounds,
             thinning_pct=active_thinning,
             marker_size_pct=intent.marker_sz,
+            vec_scale=intent.vec_scale,      # Passes slider scale
             time_bounds=intent.time_bounds,
             color_scale=intent.color_scale,
             rh_z_col=intent.rh_z_col,
@@ -118,6 +119,7 @@ def render_viewer_tab():
             up_convention=intent.sr_up_convention,
             thinning_pct=active_thinning,
             marker_size_pct=intent.marker_sz,
+            vec_scale=intent.vec_scale,      # Passes slider scale
             time_bounds=intent.time_bounds,
             color_scale=intent.color_scale,
             show_center=intent.show_cen,

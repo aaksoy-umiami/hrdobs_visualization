@@ -227,7 +227,8 @@ class CartesianMixin:
             else:
                 angles      = np.degrees(np.arctan2(u_vals, v_vals))
                 marker_dict = dict(
-                    symbol='arrow-up', angle=angles, angleref='up',
+                    symbol='M 0,1 L 0,-1 L -0.3,-0.6 M 0,-1 L 0.3,-0.6', # Custom sleek stick arrow
+                    angle=angles, angleref='up',
                     size=12 * sz_mult * vec_scale, color=color_array,
                     colorscale=cmap, cmin=cmin, cmax=cmax, cmid=cmid,
                     showscale=True,
@@ -459,7 +460,7 @@ def add_flight_tracks(fig, data_pack, track_mapping, plot_track, selected_platfo
                 t_z_options = [c for c in track_df.columns
                                if c.lower() in (
                                    ['pres', 'pressure', 'p'] if is_target_pres
-                                   else ['height', 'ght', 'altitude', 'elev']
+                                   else ['height', 'ght', 'altitude', 'elev', 'pressure_altitude']
                                )]
                 t_z_c = t_z_options[0] if t_z_options else None
 

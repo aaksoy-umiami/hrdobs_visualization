@@ -24,6 +24,24 @@ from config import (
 
 class StormRelativeMixin:
 
+    def _rotate_vectors_to_storm_motion(self, u, v, heading_deg):
+        """
+        Rotates U and V wind components so that 'Up' aligns with the storm's heading.
+        """
+        theta = np.radians(heading_deg)
+        u_rot = u * np.cos(theta) - v * np.sin(theta)
+        v_rot = u * np.sin(theta) + v * np.cos(theta)
+        return u_rot, v_rot
+
+    def _decompose_radial_tangential(self, u, v, azimuth_deg):
+        """
+        Converts U and V wind components into Radial and Tangential components.
+        """
+        phi = np.radians(azimuth_deg)
+        v_radial = u * np.sin(phi) + v * np.cos(phi)
+        v_tangential = -u * np.cos(phi) + v * np.sin(phi)
+        return v_radial, v_tangential
+
     def _to_storm_relative(self, obs_lons, obs_lats, obs_times, track_grp, up_convention):
         from datetime import datetime, timezone
 
@@ -76,7 +94,6 @@ class StormRelativeMixin:
             headings    = np.degrees(np.arctan2(dx_tr, dy_tr)) % 360
             mean_heading = float(np.nanmedian(headings))
 
-            # Corrected rotation matrix for meteorological headings
             theta_rad = np.radians(mean_heading)
             x_rot     = x_km * np.cos(theta_rad) - y_km * np.sin(theta_rad)
             y_rot     = x_km * np.sin(theta_rad) + y_km * np.cos(theta_rad)
@@ -114,7 +131,7 @@ class StormRelativeMixin:
                             domain_bounds, sr_track_grp,
                             up_convention="Relative to North",
                             thinning_pct=None, marker_size_pct=100,
-                            time_bounds=None, color_scale="Linear scale",
+                            vec_scale=1.0, time_bounds=None, color_scale="Linear scale",
                             show_center=True, cen_mode="Display Location Only",
                             custom_colorscale=None):
                             
@@ -147,7 +164,7 @@ class StormRelativeMixin:
         if result is None:
             return None, None
 
-        x_km, y_km, range_km, azimuth_deg, _ = result
+        x_km, y_km, range_km, azimuth_deg, mean_heading = result
 
         sr_max_range = None
         if domain_bounds and '_sr_max_range_km' in domain_bounds:
@@ -287,11 +304,36 @@ class StormRelativeMixin:
         t_vals = plot_df[time_col].values
         hover_text = [make_sr_hover(r, a, v, t, z) for r, a, v, t, z in zip(range_km, azimuth_deg, plot_df[variable].values, t_vals, z_vals_hover)]
 
-
-        fig.add_trace(go.Scatter(
-            x=x_km, y=y_km,
-            mode='markers',
-            marker=dict(
+        # --- VECTOR VS MARKER PLOTTING ---
+        is_vector = variable.lower() in ['wind_vec_hz', 'wind_vec_3d']
+        
+        if is_vector and 'u' in cols_lower and 'v' in cols_lower:
+            u_col, v_col = cols_lower['u'], cols_lower['v']
+            u_vals, v_vals = plot_df[u_col].values, plot_df[v_col].values
+            
+            if up_convention == "Relative to Storm Motion" and mean_heading is not None:
+                u_rot, v_rot = self._rotate_vectors_to_storm_motion(u_vals, v_vals, mean_heading)
+            else:
+                u_rot, v_rot = u_vals, v_vals
+                
+            angles = np.degrees(np.arctan2(u_rot, v_rot))
+            marker_dict = dict(
+                symbol='M 0,1 L 0,-1 L -0.3,-0.6 M 0,-1 L 0.3,-0.6', # Custom sleek stick arrow
+                angle=angles, angleref='up',
+                size=12 * sz_mult * vec_scale,
+                color=color_vals,
+                colorscale=cmap,
+                cmin=cmin, cmax=cmax, cmid=cmid,
+                showscale=True,
+                colorbar=dict(
+                    len=0.8, thickness=15,
+                    tickfont=dict(size=FS_PLOT_TICK),
+                    tickvals=cb_tickvals,
+                    ticktext=cb_ticktext
+                )
+            )
+        else:
+            marker_dict = dict(
                 size=9 * sz_mult,
                 color=color_vals,
                 colorscale=cmap,
@@ -303,7 +345,12 @@ class StormRelativeMixin:
                     tickvals=cb_tickvals,
                     ticktext=cb_ticktext
                 )
-            ),
+            )
+
+        fig.add_trace(go.Scatter(
+            x=x_km, y=y_km,
+            mode='markers',
+            marker=marker_dict,
             text=hover_text,
             hoverinfo='text',
             showlegend=False
@@ -425,7 +472,7 @@ class StormRelativeMixin:
 
     def plot_radial_height(self, group_name, variable, sr_track_grp,
                            domain_bounds=None, thinning_pct=None,
-                           marker_size_pct=100, time_bounds=None,
+                           marker_size_pct=100, vec_scale=1.0, time_bounds=None,
                            color_scale="Linear scale", rh_z_col=None,
                            custom_colorscale=None):
                            
@@ -465,15 +512,16 @@ class StormRelativeMixin:
         if result is None:
             return None, None
 
-        _, _, range_km, _, _ = result
+        _, _, range_km, azimuth_deg, _ = result
 
         sr_max_range = None
         if domain_bounds and '_sr_max_range_km' in domain_bounds:
             sr_max_range = float(domain_bounds['_sr_max_range_km'])
         if sr_max_range is not None:
-            mask     = range_km <= sr_max_range
-            range_km = range_km[mask]
-            plot_df  = plot_df[mask]
+            mask        = range_km <= sr_max_range
+            range_km    = range_km[mask]
+            azimuth_deg = azimuth_deg[mask]
+            plot_df     = plot_df[mask]
 
         if plot_df.empty:
             return None, None
@@ -582,12 +630,37 @@ class StormRelativeMixin:
             
         hover_text = [make_rh_hover(r, z, v, t) for r, z, v, t in zip(range_km, z_vals, color_vals, t_vals)]
 
-
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=range_km, y=z_vals,
-            mode='markers',
-            marker=dict(
+        # --- VECTOR VS MARKER PLOTTING ---
+        is_vector = variable.lower() in ['wind_vec_hz', 'wind_vec_3d']
+        
+        if is_vector and 'u' in cols_lower and 'v' in cols_lower:
+            u_col, v_col = cols_lower['u'], cols_lower['v']
+            u_vals, v_vals = plot_df[u_col].values, plot_df[v_col].values
+            
+            v_radial, v_tangential = self._decompose_radial_tangential(u_vals, v_vals, azimuth_deg)
+            
+            w_col = cols_lower.get('w')
+            w_vals = plot_df[w_col].values if w_col and w_col in plot_df.columns else np.zeros_like(u_vals)
+            
+            angles = np.degrees(np.arctan2(v_radial, w_vals))
+            
+            marker_dict = dict(
+                symbol='M 0,1 L 0,-1 L -0.3,-0.6 M 0,-1 L 0.3,-0.6', # Custom sleek stick arrow
+                angle=angles, angleref='up',
+                size=12 * sz_mult * vec_scale,
+                color=_color_work,
+                colorscale=cmap,
+                cmin=cmin, cmax=cmax, cmid=cmid,
+                showscale=True,
+                colorbar=dict(
+                    len=0.8, thickness=15,
+                    tickfont=dict(size=FS_PLOT_TICK),
+                    tickvals=cb_tickvals,
+                    ticktext=cb_ticktext,
+                )
+            )
+        else:
+            marker_dict = dict(
                 size=9 * sz_mult,
                 color=_color_work,
                 colorscale=cmap,
@@ -599,7 +672,13 @@ class StormRelativeMixin:
                     tickvals=cb_tickvals,
                     ticktext=cb_ticktext,
                 )
-            ),
+            )
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=range_km, y=z_vals,
+            mode='markers',
+            marker=marker_dict,
             text=hover_text,
             hoverinfo='text',
             showlegend=False,
