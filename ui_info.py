@@ -144,8 +144,9 @@ Scientist, *CIMAS/Rosenstiel School, University of Miami*
     with col_auth2:
         st.markdown("#### 💻 Dataset & Source Code")
         st.markdown("""
-        The HRDOBS dataset and the source code for this application will be made
-        publicly available along with the publication of the companion paper.
+        The HRDOBS dataset DOI will be made publicly available along with the publication of the companion paper. The source code can be accessed at:
+        
+        [https://github.com/aaksoy-umiami/hrdobs_visualization](https://github.com/aaksoy-umiami/hrdobs_visualization)
 
         For early access or collaboration inquiries, please reach out directly via
         the contact information provided.
