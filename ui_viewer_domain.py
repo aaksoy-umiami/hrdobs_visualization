@@ -157,7 +157,7 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
         b1.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
 
         with b1:
-            if st.button("🔍 Auto-fit domain", width="stretch"):
+            if st.button("🔍 Auto-fit domain", width="stretch") or consume_flag('_trigger_auto_fit'):
                 if is_sr or is_rh:
                     if plotter is not None and sr_track_grp:
                         try:
@@ -327,13 +327,35 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
         _pending_time = consume_flag('_pending_time_range')
         if _pending_time: st.session_state.v_time_range = _pending_time
             
-        time_range = st.slider("Time Limits", min_value=_t_slider_min, max_value=_t_slider_max, key='v_time_range', format="HH:mm:ss", label_visibility="collapsed")
+        if pd.isnull(_t_slider_min) or pd.isnull(_t_slider_max):
+            st.warning("⚠️ Invalid time bounds in current domain.")
+            return None
+        elif _t_slider_min >= _t_slider_max:
+            safe_max = _t_slider_min + timedelta(seconds=1)
+            time_range = st.slider(
+                "Time Limits", 
+                min_value=_t_slider_min, 
+                max_value=safe_max, 
+                value=(_t_slider_min, safe_max), 
+                key='v_time_range', 
+                format="HH:mm:ss", 
+                label_visibility="collapsed"
+            )
+        else:
+            time_range = st.slider(
+                "Time Limits", 
+                min_value=_t_slider_min, 
+                max_value=_t_slider_max, 
+                key='v_time_range', 
+                format="HH:mm:ss", 
+                label_visibility="collapsed"
+            )
 
         tb1, tb2 = st.columns(2)
         tb1.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
 
         with tb1:
-            if st.button("⏱️ Auto-fit time", width="stretch", key='btn_time_fit'):
+            if st.button("⏱️ Auto-fit time", width="stretch", key='btn_time_fit') or consume_flag('_trigger_time_fit'):
                 temp_df = df_sel.copy()
                 if (st.session_state.get('v_use_filter') and 'v_vert_coord' in st.session_state and 'v_lvl_range' in st.session_state):
                     t_col = st.session_state.v_vert_coord
@@ -368,7 +390,10 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
                     if not visible_dt.empty:
                         fit_min = max(visible_dt.min().to_pydatetime(), data_min_dt)
                         fit_max = min(visible_dt.max().to_pydatetime(), data_max_dt)
-                        if fit_min > fit_max: fit_min = fit_max
+                        
+                        if fit_min >= fit_max: 
+                            fit_max = fit_min + timedelta(seconds=1)
+                            
                         st.session_state._force_time_range  = (fit_min, fit_max)
                         st.session_state._force_time_fit    = True
                         st.session_state._slider_time_bounds = (fit_min, fit_max)

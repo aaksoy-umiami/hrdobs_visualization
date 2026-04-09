@@ -280,7 +280,7 @@ class RadialHeightMixin:
             ),
             plot_bgcolor=CLR_PLOT_BG,
             paper_bgcolor=CLR_PLOT_BG,
-            margin=dict(l=80, r=120, t=_MT, b=60),
+            margin=dict(l=100, r=100, t=_MT, b=60),
         )
 
         return fig, plot_df

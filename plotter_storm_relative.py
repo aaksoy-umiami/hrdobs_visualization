@@ -418,7 +418,7 @@ class StormRelativeMixin:
                                           f"Storm-Relative | Up: {up_label}")
         _MT          = self._title_top_margin(nice_title)
         _FIG_W       = 700
-        _ML, _MR, _MB = 80, 120, 80
+        _ML, _MR, _MB = 100, 100, 80
         _FIG_H        = _FIG_W
 
         axis_lim = max_range

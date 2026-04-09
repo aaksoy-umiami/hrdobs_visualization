@@ -338,14 +338,9 @@ class StormPlotterBase:
         if storm_sub:
             lines.append(f"<span style='font-size:{FS_PLOT_AXIS}px'>{storm_sub}</span>")
 
-        # THE FIX: Prepend a <br> to explicitly push the text block down
-        # away from the absolute top of the container where the modebar lives.
         return "<br>" + "<br>".join(lines)
 
     def _title_top_margin(self, title: str, gap: int = 45) -> int:
-        # THE FIX: Bumped the default gap from 20 to 45.
-        # This ensures the plot box itself drops down enough to make room 
-        # for both the lowered title and the empty hover zone above it.
         n_lines = title.count('<br>') + 1
         height  = FS_PLOT_TITLE
         height += max(0, n_lines - 1) * FS_PLOT_AXIS
@@ -445,7 +440,10 @@ class StormPlotterBase:
             if 'z_min' in domain_bounds and domain_bounds.get('z_col') in plot_df.columns:
                 z_b_col = domain_bounds['z_col']
                 z_b_vals = plot_df[z_b_col] / 100.0 if domain_bounds.get('z_convert') else plot_df[z_b_col]
-                plot_df = plot_df[(z_b_vals >= domain_bounds['z_min']) & (z_b_vals <= domain_bounds['z_max'])]
+                # FIX: Explicitly allow NaNs to survive the bounding box
+                z_mask = (z_b_vals >= domain_bounds['z_min']) & (z_b_vals <= domain_bounds['z_max'])
+                z_mask = z_mask | z_b_vals.isna()
+                plot_df = plot_df[z_mask]
             if plot_df.empty: return plot_df, constraint_lbl
 
             if filter_spatial:
@@ -463,7 +461,6 @@ class StormPlotterBase:
         return plot_df, constraint_lbl
     
     def _prepare_colorscale(self, group_name, variable, plot_df, color_scale, custom_colorscale=None, is_track=False):
-        """Centralized helper to compute color arrays, log scales, and colorbar ticks."""
         import numpy as np
         from config import GLOBAL_VAR_CONFIG
         

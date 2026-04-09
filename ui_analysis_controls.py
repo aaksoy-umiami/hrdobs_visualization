@@ -66,11 +66,16 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
 
         variable = None
         coord_var = None
+        scatter_color_var = None
+        scatter_marker_size = 100
+        reverse_axes = False
+        ordered = []
         
         if 'TRACK' in sel_group.upper():
             st.info("Statistical analysis not available for flight tracks.")
         else:
             is_scatter = (analysis_type == "Scatter Analysis")
+            is_1d_hist = (analysis_type == "Histogram Analysis (1D)")
             is_2d_hist = (analysis_type == "Histogram Analysis (2D)")
 
             label_1 = "First Variable" if is_scatter else ("Primary Variable" if is_2d_hist else "Variable")
@@ -93,7 +98,7 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
             
             has_az   = "azimuth_north" in [v1_lower, v2_lower] or "azimuth_motion" in [v1_lower, v2_lower]
             has_dist = "dist_from_center" in [v1_lower, v2_lower]
-            is_polar_eligible = has_az and has_dist and not (analysis_type == "Histogram Analysis (1D)")
+            is_polar_eligible = has_az and has_dist and not is_1d_hist
             is_polar = is_polar_eligible and st.session_state.get('a_coord_sys') == "Polar"
 
             if list_1:
@@ -119,17 +124,51 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
 
                 v2_col1, v2_col2 = st.columns([1.6, 1])
                 with v2_col1:
-                    coord_var = st.selectbox(label_2, list_2, key='a_coord_var', format_func=lambda x: plotter._get_var_display_name(sel_group, x), disabled=(analysis_type == "Histogram Analysis (1D)"))
+                    coord_var = st.selectbox(label_2, list_2, key='a_coord_var', format_func=lambda x: plotter._get_var_display_name(sel_group, x), disabled=is_1d_hist)
                 with v2_col2:
                     init_state('a_scale_coord_var', "Linear scale")
                     if is_polar and st.session_state.a_scale_coord_var != "Linear scale":
                         st.session_state.a_scale_coord_var = "Linear scale"
-                    st.selectbox("Plot on:", ["Linear scale", "Log scale"], key='a_scale_coord_var', disabled=(analysis_type == "Histogram Analysis (1D)" or is_polar))
+                    st.selectbox("Plot on:", ["Linear scale", "Log scale"], key='a_scale_coord_var', disabled=(is_1d_hist or is_polar))
+                
+                # --- MOVED REVERSE AXES CHECKBOX ---
+                init_state('a_reverse_axes', False)
+                if is_polar and st.session_state.a_reverse_axes:
+                    st.session_state.a_reverse_axes = False
+                st.checkbox("Reverse X and Y axes", key="a_reverse_axes", disabled=(is_polar or is_1d_hist))
+                reverse_axes = st.session_state.a_reverse_axes
             else:
                 st.warning("No valid secondary variables found for this group.")
 
-    _ordered = ordered if (is_scatter or is_2d_hist) else []
-    return sel_group, variable, coord_var, _ordered
+            section_divider()
+            
+            color_opts = ["None", "Variable:"]
+            init_state('a_scatter_color', "None")
+            if st.session_state.a_scatter_color not in color_opts: st.session_state.a_scatter_color = "None"
+            scatter_color_mode = st.selectbox("Scatter Color by:", color_opts, key="a_scatter_color", disabled=not is_scatter)
+
+            color_by_var = (is_scatter and scatter_color_mode == "Variable:")
+            
+            def reset_scatter_color_dep():
+                if 'a_custom_colorscale' in st.session_state:
+                    del st.session_state['a_custom_colorscale']
+                if 'a_rev_cmap' in st.session_state:
+                    del st.session_state['a_rev_cmap']
+                    
+            if ordered:
+                init_state('a_scatter_color_var', ordered[0])
+                if st.session_state.a_scatter_color_var not in ordered: st.session_state.a_scatter_color_var = ordered[0]
+                st.selectbox("Color Variable", ordered, key="a_scatter_color_var", on_change=reset_scatter_color_dep, format_func=lambda x: plotter._get_var_display_name(sel_group or "", x), disabled=not color_by_var, label_visibility="collapsed")
+
+            sidebar_label("Marker Size:", size='label', enabled=is_scatter)
+            init_state('a_scatter_marker_size', 100)
+            st.slider("Scatter Marker Size", min_value=10, max_value=200, step=10, format="%d%%", key="a_scatter_marker_size", disabled=not is_scatter, label_visibility="collapsed")
+
+            scatter_color_var = st.session_state.get('a_scatter_color_var') if color_by_var else None
+            scatter_marker_size = st.session_state.get('a_scatter_marker_size', 100) if is_scatter else 100
+
+    _ordered = ordered if (not 'TRACK' in sel_group.upper() and (is_scatter or analysis_type == "Histogram Analysis (2D)")) else []
+    return sel_group, variable, coord_var, scatter_color_var, scatter_marker_size, _ordered, reverse_axes
 
 
 def render_analysis_controls() -> AnalysisIntent:
@@ -153,10 +192,13 @@ def render_analysis_controls() -> AnalysisIntent:
         analysis_type = st.selectbox("Select Analysis Mode", ["Histogram Analysis (1D)", "Histogram Analysis (2D)", "Scatter Analysis"], key='a_analysis_type')
         intent.analysis_type = analysis_type
         
-    sel_group, variable, coord_var, scatter_var_list = _render_analysis_variable_section(data_pack, plotter, analysis_type)
+    sel_group, variable, coord_var, scatter_color_var, scatter_marker_size, scatter_var_list, reverse_axes = _render_analysis_variable_section(data_pack, plotter, analysis_type)
     intent.sel_group = sel_group
     intent.variable = variable
     intent.coord_var = coord_var
+    intent.scatter_color_var = scatter_color_var
+    intent.scatter_marker_size = scatter_marker_size
+    intent.reverse_axes = reverse_axes
         
     with st.sidebar.container(border=True):
         st.markdown("### ⚙️ Plotting Options")
@@ -173,7 +215,6 @@ def render_analysis_controls() -> AnalysisIntent:
         cmaps = sorted(list(set(AVAILABLE_COLORSCALES + [default_cmap])))
         init_state('a_custom_colorscale', default_cmap)
         
-        # --- NEW INLINE LAYOUT FOR COLORSCALE ---
         c_cs1, c_cs2 = st.columns([1.1, 1.8])
         with c_cs1:
             sidebar_label("Colorscale:", size='label', enabled=not is_1d_hist)
@@ -207,7 +248,6 @@ def render_analysis_controls() -> AnalysisIntent:
         intent.coordinate_system = coord_sys
         is_polar = (coord_sys == "Polar")
         
-        # New Map Option Dropdown
         lons = ['lon', 'longitude', 'clon']
         lats = ['lat', 'latitude', 'clat']
         is_lat_lon = ((v1_lower in lons and v2_lower in lats) or 
@@ -250,22 +290,20 @@ def render_analysis_controls() -> AnalysisIntent:
         c_lx, c_ix, c_ly, c_iy = st.columns([0.8, 1.2, 0.8, 1.2])
         
         with c_lx:
-            # X bins are now enabled for Scatter to support marginal calculation!
-            sidebar_label(lbl_x, size='label')
+            sidebar_label(lbl_x, size='label', enabled=not is_scatter)
         with c_ix:
             val_x = st.number_input(
                 "Bins X Input", min_value=1, max_value=1000, value=def_x, step=1, 
-                key=f"bin_x_auto_{is_polar}_{is_x_az}", label_visibility="collapsed"
+                key=f"bin_x_auto_{is_polar}_{is_x_az}", label_visibility="collapsed", disabled=is_scatter
             )
             intent.hist_bins_x = val_x
 
         with c_ly:
-            # Y bins are enabled for Scatter to support marginal calculation!
-            sidebar_label(lbl_y, size='label', enabled=not is_1d_hist)
+            sidebar_label(lbl_y, size='label', enabled=not (is_1d_hist or is_scatter))
         with c_iy:
             val_y = st.number_input(
                 "Bins Y Input", min_value=1, max_value=1000, value=def_y, step=1, 
-                key=f"bin_y_auto_{is_polar}_{is_y_az}", disabled=is_1d_hist, label_visibility="collapsed"
+                key=f"bin_y_auto_{is_polar}_{is_y_az}", disabled=(is_1d_hist or is_scatter), label_visibility="collapsed"
             )
             intent.hist_bins_y = val_y if not is_1d_hist else None
 
@@ -277,12 +315,6 @@ def render_analysis_controls() -> AnalysisIntent:
             if st.session_state.a_hist_norm not in norm_opts: st.session_state.a_hist_norm = "None"
             norm_val = st.selectbox("Normalization Option", norm_opts, key='a_hist_norm', label_visibility="collapsed", disabled=is_scatter)
             intent.normalization = norm_val if not is_scatter else "None"
-                
-        init_state('a_reverse_axes', False)
-        if is_polar and st.session_state.a_reverse_axes:
-            st.session_state.a_reverse_axes = False
-        st.checkbox("Reverse X and Y axes", key="a_reverse_axes", disabled=is_polar)
-        intent.reverse_axes = st.session_state.a_reverse_axes
 
         init_state('a_render_as_line', False)
         if not is_1d_hist and st.session_state.a_render_as_line: st.session_state.a_render_as_line = False
@@ -294,12 +326,8 @@ def render_analysis_controls() -> AnalysisIntent:
         st.checkbox("Overlay Density Curve/Contours (KDE)", key="a_show_kde", disabled=is_scatter)
         intent.show_kde = st.session_state.a_show_kde if not is_scatter else False
 
-        # Marginal Checkbox: Now disabled for BOTH 1D histograms and Scatter plots
         init_state('a_show_marginals', False)
-        
-        # We disable it if it's 1D (useless) or Scatter (per your preference)
         marginals_allowed = not (is_1d_hist or is_scatter)
-        
         if not marginals_allowed:
             st.session_state.a_show_marginals = False
 
@@ -311,34 +339,6 @@ def render_analysis_controls() -> AnalysisIntent:
         )
         intent.show_marginals = st.session_state.a_show_marginals if marginals_allowed else False
                 
-        section_divider()
-        st.markdown("#### Scatter Controls")
-        
-        color_opts = ["None", "Variable:"]
-        init_state('a_scatter_color', "None")
-        if st.session_state.a_scatter_color not in color_opts: st.session_state.a_scatter_color = "None"
-        scatter_color_mode = st.selectbox("Color By", color_opts, key="a_scatter_color", disabled=not is_scatter)
-
-        color_by_var = (is_scatter and scatter_color_mode == "Variable:")
-        
-        def reset_scatter_color_dep():
-            if 'a_custom_colorscale' in st.session_state:
-                del st.session_state['a_custom_colorscale']
-            if 'a_rev_cmap' in st.session_state:
-                del st.session_state['a_rev_cmap']
-                
-        if scatter_var_list:
-            init_state('a_scatter_color_var', scatter_var_list[0])
-            if st.session_state.a_scatter_color_var not in scatter_var_list: st.session_state.a_scatter_color_var = scatter_var_list[0]
-            st.selectbox("Color Variable", scatter_var_list, key="a_scatter_color_var", on_change=reset_scatter_color_dep, format_func=lambda x: plotter._get_var_display_name(intent.sel_group or "", x), disabled=not color_by_var, label_visibility="collapsed")
-
-        sidebar_label("Marker Size:", size='label', enabled=is_scatter)
-        init_state('a_scatter_marker_size', 100)
-        st.slider("Scatter Marker Size", min_value=10, max_value=200, step=10, format="%d%%", key="a_scatter_marker_size", disabled=not is_scatter, label_visibility="collapsed")
-
-        intent.scatter_color_var  = st.session_state.get('a_scatter_color_var') if color_by_var else None
-        intent.scatter_marker_size = st.session_state.get('a_scatter_marker_size', 100) if is_scatter else 100
-
     intent.log_var       = (st.session_state.get('a_scale_var', 'Linear scale') == 'Log scale')
     intent.log_coord_var = (st.session_state.get('a_scale_coord_var', 'Linear scale') == 'Log scale')
 

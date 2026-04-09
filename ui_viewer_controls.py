@@ -83,10 +83,28 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
         st.session_state.v_thin_pct = 50
         if 'show_auto_thin_msg' in st.session_state:
             st.session_state.show_auto_thin_msg = False
-        for k in ['v_lvl_range', 'v_time_range', 'v_last_coord',
-                  'v_vert_range', 'v_plot_err', 'v_vec_scale', '_last_dom_z_col', 'v_custom_colorscale']:
+            
+        keys_to_clear = [
+            'v_lvl_range', 'v_time_range', 'v_last_coord', 'v_vert_range', 
+            'v_plot_err', 'v_vec_scale', '_last_dom_z_col', 'v_custom_colorscale',
+            'v_lat_range', 'v_lon_range',
+            '_slider_time_bounds', '_slider_lat_bounds', '_slider_lon_bounds'
+        ]
+        
+        # Clear from the active session state
+        for k in keys_to_clear:
             if k in st.session_state:
                 del st.session_state[k]
+                
+        # CRITICAL FIX: Clear from the persistent viewer_state backup dictionary
+        if 'viewer_state' in st.session_state:
+            for k in keys_to_clear:
+                if k in st.session_state.viewer_state:
+                    del st.session_state.viewer_state[k]
+
+        # Tell the UI to automatically run the fit logic
+        st.session_state._trigger_auto_fit = True
+        st.session_state._trigger_time_fit = True
 
     def reset_var_dependencies():
         if 'v_plot_err' in st.session_state:
@@ -110,7 +128,6 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
             df_sel     = data_pack['data'][sel_group]
             cols_lower = {c.lower(): c for c in df_sel.columns}
             
-            # Allow h_col and p_col detection for ALL groups, including tracks
             h_col = next((cols_lower[c] for c in ['height', 'ght', 'altitude', 'elev'] if c in cols_lower), None)
             p_col = next((cols_lower[c] for c in ['pres', 'pressure', 'p'] if c in cols_lower), None)
 
@@ -175,7 +192,7 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
     return sel_group, variable, plot_var, color_scale, h_col, p_col, df_sel, cols_lower, rh_z_col
 
 
-def _render_plot_type_section(data_pack, sel_group, is_3d, h_col=None, p_col=None, plotter=None):
+def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, p_col=None, plotter=None):
     available_tracks = []
     track_candidates = ['track_best_track', 'track_spline_track', 'track_vortex_message']
     for t in track_candidates:
@@ -183,7 +200,7 @@ def _render_plot_type_section(data_pack, sel_group, is_3d, h_col=None, p_col=Non
             if not sel_group or t.lower() != sel_group.lower():
                 available_tracks.append(t)
 
-    _sr_available = (len(available_tracks) > 0 and not is_3d)
+    _sr_available = (len(available_tracks) > 0 and not is_3d_state_in)
     _PLOT_TYPES = ["Horizontal Cartesian", "Horizontal Storm-Relative", "Radial-Height Profile"]
 
     init_state('v_plot_type', "Horizontal Cartesian")
@@ -211,7 +228,7 @@ def _render_plot_type_section(data_pack, sel_group, is_3d, h_col=None, p_col=Non
         requires_track = is_sr or is_rh
 
         if not _sr_available and st.session_state.v_plot_type == "Horizontal Cartesian":
-            if is_3d:
+            if is_3d_state_in:
                 st.caption("ℹ️ Storm-Relative / Radial-Height unavailable in 3D mode.")
             elif len(available_tracks) == 0:
                 st.caption("ℹ️ Storm-Relative / Radial-Height requires an alternate track group (≥2 points).")
@@ -262,10 +279,36 @@ def _render_plot_type_section(data_pack, sel_group, is_3d, h_col=None, p_col=Non
             sr_up_convention = st.session_state.get('v_sr_up', "Relative to North")
             rh_z_col = None
 
-    return plot_type, sr_up_convention, sr_track_grp, rh_z_col
+        section_divider()
+
+        # 3D Settings 
+        options = [c for c in [h_col, p_col] if c]
+        can_do_3d = (h_col is not None or p_col is not None) and not is_rh
+        if (not can_do_3d or is_rh) and st.session_state.get('v_is_3d', False):
+            st.session_state.v_is_3d = False
+
+        c3d_1, c3d_2 = st.columns([1.1, 1])
+        with c3d_1:
+            spacer('sm')
+            init_state('v_is_3d', False)
+            is_3d = st.checkbox("3D view with z axis:", key='v_is_3d', disabled=not can_do_3d)
+        with c3d_2:
+            options_3d = options if options else ["None"]
+            if st.session_state.get('v_3d_z') not in options_3d:
+                st.session_state.v_3d_z = options_3d[0]
+            target_col_3d = st.selectbox("Select 3D Z-Axis", options_3d, key='v_3d_z', label_visibility="collapsed", disabled=not is_3d)
+
+        r1, r2 = st.columns([1.1, 2.2])
+        with r1:
+            sidebar_label("Vert. Aspect Ratio:", enabled=is_3d)
+        with r2:
+            init_state('v_3d_ratio', 0.3)
+            z_ratio = st.slider("VAR", min_value=0.05, max_value=1.5, step=0.05, key='v_3d_ratio', disabled=not is_3d, label_visibility="collapsed")
+
+    return plot_type, sr_up_convention, sr_track_grp, rh_z_col, is_3d, target_col_3d, z_ratio, can_do_3d
 
 
-def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lower, plot_var, plot_type="Horizontal Cartesian"):
+def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lower, plot_var, plot_type, is_3d_state, target_col_3d):
     with st.sidebar.container(border=True):
         st.markdown("### ⚙️ Plotting Options")
         
@@ -273,7 +316,6 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
         cmaps = sorted(list(set(AVAILABLE_COLORSCALES + [default_cmap])))
         init_state('v_custom_colorscale', default_cmap)
         
-        # Clean two-column layout for Colorscale
         c_cs1, c_cs2 = st.columns([1.1, 1.8])
         with c_cs1:
             sidebar_label("Colorscale:", size='label')
@@ -301,7 +343,6 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
         with c_cen2:
             cen_mode = st.selectbox("Center Mode", ["Display Location Only", "Display As Motion Vector"], key='v_cen_mode', disabled=not show_cen or is_rh, label_visibility="collapsed")
 
-        is_3d_state = st.session_state.get('v_is_3d', False)
         disable_map = is_3d_state or is_sr or is_rh
 
         init_state('v_show_basemap', False)
@@ -403,7 +444,6 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
 
         p_c1, p_c2 = st.columns([1.4, 1])
         with p_c1:
-            is_3d_state   = st.session_state.get('v_is_3d', False)
             proj_disabled = True if is_rh else not (plot_track and is_3d_state)
             p_color       = "inherit" if not proj_disabled else CLR_MUTED
             st.markdown(f"<div style='margin-top: 8px; font-size: {FS_BODY}px; font-weight: 500; color: {p_color};'>Display track projection:</div>", unsafe_allow_html=True)
@@ -418,31 +458,7 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
                     st.session_state.v_track_proj = proj_options[0]
             track_proj = st.selectbox("Projection", proj_options, key='v_track_proj', disabled=proj_disabled, label_visibility="collapsed")
 
-        section_divider()
-
-        can_do_3d = (h_col is not None or p_col is not None) and not is_rh
-        if (not can_do_3d or is_rh) and st.session_state.get('v_is_3d', False):
-            st.session_state.v_is_3d = False
-
-        c3d_1, c3d_2 = st.columns([1.1, 1])
-        with c3d_1:
-            spacer('sm')
-            init_state('v_is_3d', False)
-            is_3d = st.checkbox("3D view with z axis:", key='v_is_3d', disabled=not can_do_3d)
-        with c3d_2:
-            options_3d = options if options else ["None"]
-            if st.session_state.get('v_3d_z') not in options_3d:
-                st.session_state.v_3d_z = options_3d[0]
-            target_col_3d = st.selectbox("Select 3D Z-Axis", options_3d, key='v_3d_z', label_visibility="collapsed", disabled=not is_3d)
-
         plot_z_col = target_col if use_filter else (target_col_3d if options else None)
-
-        r1, r2 = st.columns([1.1, 2.2])
-        with r1:
-            sidebar_label("Vert. Aspect Ratio:", enabled=is_3d)
-        with r2:
-            init_state('v_3d_ratio', 0.3)
-            z_ratio = st.slider("VAR", min_value=0.05, max_value=1.5, step=0.05, key='v_3d_ratio', disabled=not is_3d, label_visibility="collapsed")
 
         section_divider()
 
@@ -452,18 +468,18 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
             sidebar_label("Vector Scale:" if is_vector else "Marker Size:", size='label')
         with m2:
             if is_vector:
-                init_state('v_vec_scale', 1.0)
+                init_state('v_vec_scale', 2.0)
                 vec_scale = st.slider("Vector Scale", min_value=0.1, max_value=5.0, step=0.1, key='v_vec_scale', label_visibility="collapsed")
                 marker_sz = 100
             else:
-                init_state('v_marker_size', 100)
+                init_state('v_marker_size', 50)
                 marker_sz = st.slider("Marker Size", min_value=10, max_value=200, step=10, format="%d%%", key='v_marker_size', label_visibility="collapsed")
                 vec_scale = 1.0
 
     return (show_cen, cen_mode, apply_thinning, thin_pct, z_con, target_col,
-            target_col_3d, track_mapping, plot_track, selected_platform,
-            track_proj, is_3d, plot_z_col, z_ratio, marker_sz, vec_scale,
-            can_do_3d, custom_colorscale)
+            track_mapping, plot_track, selected_platform,
+            track_proj, plot_z_col, marker_sz, vec_scale,
+            custom_colorscale)
 
 def render_viewer_controls(plotter) -> ViewerIntent:
     intent = ViewerIntent()
@@ -504,18 +520,16 @@ def render_viewer_controls(plotter) -> ViewerIntent:
     intent.plot_var    = plot_var
     intent.color_scale = color_scale
 
-    options = [c for c in [h_col, p_col] if c]
-
     _cur_is_3d = st.session_state.get('v_is_3d', False)
-    plot_type, sr_up_convention, sr_track_grp, rh_z_col = _render_plot_type_section(
+    plot_type, sr_up_convention, sr_track_grp, rh_z_col, is_3d, target_col_3d, z_ratio, can_do_3d = _render_plot_type_section(
         data_pack, sel_group, _cur_is_3d, h_col=h_col, p_col=p_col, plotter=plotter
     )
 
     (show_cen, cen_mode, apply_thinning, thin_pct, z_con, target_col,
-     target_col_3d, track_mapping, plot_track, selected_platform,
-     track_proj, is_3d, plot_z_col, z_ratio, marker_sz, vec_scale,
-     can_do_3d, custom_colorscale) = _render_plotting_options(
-         data_pack, sel_group, h_col, p_col, df_sel, cols_lower, plot_var, plot_type
+     track_mapping, plot_track, selected_platform,
+     track_proj, plot_z_col, marker_sz, vec_scale,
+     custom_colorscale) = _render_plotting_options(
+         data_pack, sel_group, h_col, p_col, df_sel, cols_lower, plot_var, plot_type, is_3d, target_col_3d
      )
 
     intent.custom_colorscale = custom_colorscale
@@ -542,8 +556,10 @@ def render_viewer_controls(plotter) -> ViewerIntent:
     from ui_viewer_domain import _render_domain_section, _render_time_section
     
     (domain_bounds, convert_dom, vert_range, domain_z_col) = _render_domain_section(
-         data_pack, sel_group, df_sel, options, target_col, target_col_3d, is_3d,
-         intent.default_lat_min, intent.default_lat_max, intent.default_lon_min, intent.default_lon_max,
+         data_pack, sel_group, df_sel, options=[c for c in [h_col, p_col] if c], 
+         target_col=target_col, target_col_3d=target_col_3d, is_3d=is_3d,
+         default_lat_min=intent.default_lat_min, default_lat_max=intent.default_lat_max, 
+         default_lon_min=intent.default_lon_min, default_lon_max=intent.default_lon_max,
          plot_type=plot_type, sr_track_grp=sr_track_grp, plotter=plotter, rh_z_col=rh_z_col
      )
     intent.domain_bounds = domain_bounds

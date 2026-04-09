@@ -144,7 +144,7 @@ class HistogramMixin:
             showlegend=False,
             plot_bgcolor=CLR_PLOT_BG,
             paper_bgcolor=CLR_PLOT_BG,
-            margin=dict(l=60, r=40, t=self._title_top_margin(nice_title), b=60),
+            margin=dict(l=50, r=50, t=self._title_top_margin(nice_title), b=60),
         )
         return fig
 
@@ -468,7 +468,7 @@ class HistogramMixin:
                             line=dict(color='#808080', width=2, dash='dash'), showlegend=False
                         ))
 
-        plot_margin_r = 120 if (coordinate_system == "Cartesian" and show_marginals) else 40
+        plot_margin_r = 120 if (coordinate_system == "Cartesian" and show_marginals) else 50
         plot_margin_t = self._title_top_margin(nice_title) - 20
 
         fig.update_layout(
@@ -478,7 +478,7 @@ class HistogramMixin:
             showlegend=False,
             plot_bgcolor=CLR_PLOT_BG,
             paper_bgcolor=CLR_PLOT_BG,
-            margin=dict(l=60, r=plot_margin_r, t=plot_margin_t, b=60),
+            margin=dict(l=50, r=plot_margin_r, t=plot_margin_t, b=60),
         )
         return fig
     

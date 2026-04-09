@@ -280,7 +280,7 @@ class CartesianMixin:
             )
         else:
             _FIG_W          = 700
-            _ML, _MR, _MB   = 60, 120, 60
+            _ML, _MR, _MB   = 100, 100, 80
             _MT             = self._title_top_margin(nice_title)
             if domain_bounds and domain_bounds.get('lat_max') is not None:
                 lat_range = domain_bounds['lat_max'] - domain_bounds['lat_min']
