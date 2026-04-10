@@ -494,6 +494,21 @@ def render_viewer_controls(plotter) -> ViewerIntent:
 
     if data_pack is None: return intent
     intent.data_pack = data_pack
+    
+    # --- NEW: Detect file swaps and nuke the ghost memory boundaries ---
+    current_file = st.session_state.get('last_uploaded_filename')
+    if st.session_state.get('_prev_viewer_file') != current_file:
+        keys_to_purge = ['_slider_lat_bounds', '_slider_lon_bounds', '_slider_time_bounds', 
+                         'v_lat_range', 'v_lon_range', 'v_time_range', 'v_vert_range']
+        for k in keys_to_purge:
+            st.session_state.pop(k, None)
+            if 'viewer_state' in st.session_state:
+                st.session_state.viewer_state.pop(k, None)
+                
+        st.session_state._trigger_auto_fit = True
+        st.session_state._trigger_time_fit = True
+        st.session_state['_prev_viewer_file'] = current_file
+    # ------------------------------------------------------------------
 
     from plotter import StormPlotter
     plotter = StormPlotter(data_pack['data'], data_pack['track'], data_pack['meta'], data_pack['var_attrs'])

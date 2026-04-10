@@ -46,57 +46,54 @@ COLORSCALE_NAMES = {
 }
 
 GLOBAL_VAR_CONFIG = {
-    # --- NON-PLOTTABLE COORDINATES & METADATA (Hidden) ---
-    'lat': {'hide': True, 'is_coord': True}, 
-    'lon': {'hide': True, 'is_coord': True}, 
-    'latitude': {'hide': True, 'is_coord': True}, 
-    'longitude': {'hide': True, 'is_coord': True}, 
-    'time': {'hide': False, 'is_coord': True},
-    'clat': {'hide': True, 'is_coord': True, 'is_track_pos': True},
-    'clon': {'hide': True, 'is_coord': True, 'is_track_pos': True},
-    'az': {'hide': True, 'is_coord': True}, 'rmw': {'hide': True, 'is_coord': True},
-    'qerr': {'hide': True}, 'spderr': {'hide': True},
+    # --- TIER 0: STANDARD VARIABLES (is_derived=False, is_coord=False) ---
+    'u': {'colorscale': 'RdBu_r', 'cmid': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 1},
+    'v': {'colorscale': 'RdBu_r', 'cmid': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 2},
+    'w': {'colorscale': 'PuOr_r', 'cmid': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 3},
+    't': {'colorscale': 'Plasma', 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order':4},
+    'q': {'colorscale': 'YlGnBu', 'cmin': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 5},
+    'spd': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 6},
+    'sfcspd': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 7},
+    'sfcdir': {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 8},
+    'rr': {'colorscale': 'Blues', 'cmin': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 9},
+    'rvel': {'colorscale': 'RdBu_r', 'cmid': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 10},
+    'pmin': {'colorscale': 'Viridis_r', 'hide': False, 'display_name': 'Min Pressure (hPa)', 'is_coord': False, 'is_derived': False, 'sort_order': 11},
+    'vmax': {'colorscale': 'Turbo', 'hide': False, 'cmin': 0, 'display_name': 'Max Wind (m/s)', 'is_coord': False, 'is_derived': False, 'sort_order': 12},
+    'uerr': {'colorscale': 'RdBu_r', 'cmid': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 13},
+    'verr': {'colorscale': 'RdBu_r', 'cmid': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 14},
+    'werr': {'colorscale': 'PuOr_r', 'cmid': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 15},
+    'terr': {'colorscale': 'Plasma', 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order':16},
+    'qerr': {'colorscale': 'YlGnBu', 'cmin': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 17},
+    'spderr': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 18},
+    'rvelerr': {'colorscale': 'RdBu_r', 'cmid': 0, 'hide': False, 'is_coord': False, 'is_derived': False, 'sort_order': 19},
 
-    # --- TRACK INTENSITY VARIABLES ---
-    'pmin': {'colorscale': 'Viridis_r', 'hide': False, 'display_name': 'Min Pressure (hPa)'},
-    'vmax': {'colorscale': 'Turbo',     'hide': False, 'cmin': 0, 'display_name': 'Max Wind (m/s)'},
+    # --- TIER 1: DERIVED VARIABLES (is_derived=True, is_coord=False) ---
+    'wspd_hz_comp': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_coord': False, 'is_derived': True, 'sort_order': 1},
+    'wspd_3d_comp': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_coord': False, 'is_derived': True, 'sort_order': 2},
+    'wind_vec_hz': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_vector': True, 'is_coord': False, 'is_derived': True, 'sort_order': 3},
+    'wind_vec_3d': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_vector': True, 'is_coord': False, 'is_derived': True, 'sort_order': 4},
 
-    # --- DIVERGING VARIABLES (Centered at 0) ---
-    'rvel': {'colorscale': 'RdBu_r', 'cmid': 0, 'hide': False}, 
-    'w':    {'colorscale': 'PuOr_r', 'cmid': 0, 'hide': False}, 
-    'u':    {'colorscale': 'RdBu_r', 'cmid': 0, 'hide': False}, 
-    'v':    {'colorscale': 'RdBu_r', 'cmid': 0, 'hide': False}, 
-    
-    # --- SEQUENTIAL VARIABLES ---
-    'spd':    {'colorscale': 'Turbo', 'cmin': 0, 'hide': False}, 
-    'sfcspd': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False}, 
-    'rr':     {'colorscale': 'Blues', 'cmin': 0, 'hide': False}, 
-    'q':      {'colorscale': 'YlGnBu', 'cmin': 0, 'hide': False}, 
-    't':      {'colorscale': 'Plasma', 'hide': False},           
-    'p':      {'colorscale': 'Viridis_r', 'hide': False, 'is_coord': True},        
-    'sfcp':   {'colorscale': 'Viridis_r', 'hide': False, 'is_coord': True},        
-    'sfcdir': {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False},
-    'wspd_hz_comp': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_derived': True},
-    'wspd_3d_comp': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_derived': True},
-    'wind_vec_hz':  {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_vector': True},
-    'wind_vec_3d':  {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'is_vector': True},
-    
-    # --- DERIVED SPATIAL COORDINATES ---
-    'dist_from_center': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False,
-                         'is_derived': True, 'is_coord': True, 'sort_weight': 100,
-                         'display_name': 'Distance from Storm Center (km)'},
-    'azimuth_north':    {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False,
-                         'is_derived': True, 'is_coord': True, 'sort_weight': 101,
-                         'display_name': 'Azimuth from North (Computed) (deg)'},
-    'azimuth_motion':   {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False,
-                         'is_derived': True, 'is_coord': True, 'sort_weight': 102,
-                         'display_name': 'Azimuth from Storm Motion (Computed) (deg)'},
-    
-    # --- VERTICAL MEASUREMENTS (Now Plottable) ---
-    'ght':      {'colorscale': 'Earth', 'hide': False, 'is_coord': True},
-    'elev':     {'colorscale': 'Earth', 'hide': False, 'is_coord': True},
-    'height':   {'colorscale': 'Earth', 'hide': False, 'is_coord': True},
-    'altitude': {'colorscale': 'Earth', 'hide': False, 'is_coord': True}
+    # --- TIER 2: STANDARD COORDINATES & METADATA (is_derived=False, is_coord=True) ---
+    'lat': {'hide': True, 'is_coord': True, 'is_derived': False, 'sort_order': 1},
+    'latitude': {'hide': True, 'is_coord': True, 'is_derived': False, 'sort_order': 2},
+    'clat': {'hide': True, 'is_track_pos': True, 'is_coord': True, 'is_derived': False, 'sort_order': 3},
+    'lon': {'hide': True, 'is_coord': True, 'is_derived': False, 'sort_order': 4},
+    'longitude': {'hide': True, 'is_coord': True, 'is_derived': False, 'sort_order': 5},
+    'clon': {'hide': True, 'is_track_pos': True, 'is_coord': True, 'is_derived': False, 'sort_order': 6},
+    'az': {'hide': True, 'is_coord': True, 'is_derived': False, 'sort_order': 7},
+    'p': {'colorscale': 'Viridis_r', 'hide': False, 'is_coord': True, 'is_derived': False, 'sort_order': 8},
+    'sfcp': {'colorscale': 'Viridis_r', 'hide': False, 'is_coord': True, 'is_derived': False, 'sort_order': 9},
+    'ght': {'colorscale': 'Earth', 'hide': False, 'is_coord': True, 'is_derived': False, 'sort_order': 10},
+    'height': {'colorscale': 'Earth', 'hide': False, 'is_coord': True, 'is_derived': False, 'sort_order': 11},
+    'altitude': {'colorscale': 'Earth', 'hide': False, 'is_coord': True, 'is_derived': False, 'sort_order': 12},
+    'elev': {'colorscale': 'Earth', 'hide': False, 'is_coord': True, 'is_derived': False, 'sort_order': 13},
+    'rmw': {'hide': True, 'is_coord': True, 'is_derived': False, 'sort_order': 14},
+    'time': {'hide': False, 'is_coord': True, 'is_derived': False, 'sort_order': 15},
+
+    # --- TIER 3: DERIVED SPATIAL COORDINATES (is_derived=True, is_coord=True) ---
+    'dist_from_center': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'sort_weight': 100, 'display_name': 'Distance from Storm Center (km)', 'is_coord': True, 'is_derived': True, 'sort_order': 1},
+    'azimuth_north': {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False, 'sort_weight': 101, 'display_name': 'Azimuth from North (Computed) (deg)', 'is_coord': True, 'is_derived': True, 'sort_order': 2},
+    'azimuth_motion': {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False, 'sort_weight': 102, 'display_name': 'Azimuth from Storm Motion (Computed) (deg)', 'is_coord': True, 'is_derived': True, 'sort_order': 3}
 }
 
 # --- AUTOMATIC UNIT CONVERSIONS ---

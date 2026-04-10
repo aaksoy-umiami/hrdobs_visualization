@@ -198,7 +198,7 @@ class StormPlotterBase:
             cfg = GLOBAL_VAR_CONFIG.get(c_lower, {})
             is_derived = cfg.get('is_derived', False)
             is_coord   = cfg.get('is_coord', False)
-            weight     = cfg.get('sort_weight', 50)
+            order      = cfg.get('sort_order', 999)
             
             if is_derived and is_coord:
                 tier = 3
@@ -210,7 +210,7 @@ class StormPlotterBase:
                 tier = 0
                 
             disp = self._get_var_display_name(group_name, c)
-            return f"{tier}_{weight:03d}_{disp}"
+            return f"{tier}_{order:03d}_{disp}"
             
         # Use dict.fromkeys to strip duplicates before sorting
         unique_vars = list(dict.fromkeys(var_list))

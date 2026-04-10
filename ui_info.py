@@ -63,7 +63,7 @@ def render_info_tab():
         with st.container(border=True):
             st.markdown("### Information Guide")
 
-            label_usage = "How To Use This App" + (" →" if is_usage else "")
+            label_usage = "Help: How To Use This App" + (" →" if is_usage else "")
             if st.button(label_usage,
                          type='primary' if is_usage else 'secondary',
                          width="stretch",
@@ -71,7 +71,7 @@ def render_info_tab():
                 st.session_state.info_sub_tab = 'usage'
                 st.rerun()
 
-            label_about = "About" + (" →" if is_about else "")
+            label_about = "About: Author & Citation" + (" →" if is_about else "")
             if st.button(label_about,
                          type='primary' if is_about else 'secondary',
                          width="stretch",
@@ -179,8 +179,14 @@ def _render_usage():
     #### 💡 General Workflow & Pro-Tips
     1. **Navigate** between different tools using the tabs at the top of the page.
     2. **Configure** your view using the options in the left sidebar. Results update automatically—no "Run" button is needed!
-    3. **Shared Memory:** Data uploaded in the *Single-File Plotter* (Tab 2) is automatically shared with the *Statistical Analysis* tool (Tab 3). You only need to load your file once.
-    4. **Interactive Charts:** All generated charts are fully interactive. You can hover over data points for exact values, click and drag to zoom or rotate 3D plots, and use the camera icon in the top right of any chart to download it as an image.
+    3. **File Upload Requirements:**
+       - No file upload is needed for Tab 1 as it uses its own built-in database.
+       - Tabs 2 & 3 require uploading one hdf5 file to memory.
+    4. **Shared Memory:** Data uploaded in the *Single-File Plotter* (Tab 2) is automatically shared with the *Statistical Analysis* tool (Tab 3). You only need to load your file once.
+    5. **Interactive Charts:** All generated charts are fully interactive. You can hover over data points for exact values, click and drag to zoom or rotate 3D plots, and use the camera icon in the top right of any chart to download it as an image.
+    6. **Interactive vs. Manual Zooming:**
+       - For quick zooming and panning, use the hover controls on the top right of the plots.
+       - Manual zooming controls in the sidebar will redefine the color scales/full plot area and redraw vectors/scatter points for more precise plotting.
 
     ---
 

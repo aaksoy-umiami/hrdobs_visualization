@@ -99,11 +99,28 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
             with c2:
                 _s_lat_min, _s_lat_max = st.session_state.get('_slider_lat_bounds', (_gd_lat[0], _gd_lat[1]))
                 init_state('v_lat_range', _gd_lat)
+                
+                # --- NEW: Defensively clamp Lat to prevent out-of-bounds crashes ---
+                c_lat_min, c_lat_max = st.session_state.v_lat_range
+                c_lat_min = max(_s_lat_min, min(c_lat_min, _s_lat_max))
+                c_lat_max = max(_s_lat_min, min(c_lat_max, _s_lat_max))
+                if c_lat_min > c_lat_max: c_lat_min = c_lat_max
+                st.session_state.v_lat_range = (c_lat_min, c_lat_max)
+
                 lat_range = st.slider("Latitude Limits", min_value=_s_lat_min, max_value=_s_lat_max, key='v_lat_range', step=0.1, label_visibility="collapsed")
+            
             with c3: sidebar_label('Lon:', size='label')
             with c4:
                 _s_lon_min, _s_lon_max = st.session_state.get('_slider_lon_bounds', (_gd_lon[0], _gd_lon[1]))
                 init_state('v_lon_range', _gd_lon)
+                
+                # --- NEW: Defensively clamp Lon to prevent out-of-bounds crashes ---
+                c_lon_min, c_lon_max = st.session_state.v_lon_range
+                c_lon_min = max(_s_lon_min, min(c_lon_min, _s_lon_max))
+                c_lon_max = max(_s_lon_min, min(c_lon_max, _s_lon_max))
+                if c_lon_min > c_lon_max: c_lon_min = c_lon_max
+                st.session_state.v_lon_range = (c_lon_min, c_lon_max)
+
                 lon_range = st.slider("Longitude Limits", min_value=_s_lon_min, max_value=_s_lon_max, key='v_lon_range', step=0.1, label_visibility="collapsed")
 
             domain_bounds = {'lat_min': lat_range[0], 'lat_max': lat_range[1], 'lon_min': lon_range[0], 'lon_max': lon_range[1]}
