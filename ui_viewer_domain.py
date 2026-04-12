@@ -19,11 +19,11 @@ from data_utils import decode_metadata, compute_global_domain, compute_vert_boun
 from ui_components import section_divider, sidebar_label, init_state, consume_flag
 
 def _render_domain_section(data_pack, sel_group, df_sel, options,
-                           target_col, target_col_3d, is_3d,
+                           target_col_3d, is_3d,
                            default_lat_min, default_lat_max,
                            default_lon_min, default_lon_max,
                            plot_type="Horizontal Cartesian",
-                           sr_track_grp=None, plotter=None, rh_z_col=None):
+                           sr_track_grp=None, plotter=None):
 
     is_sr = (plot_type == "Horizontal Storm-Relative")
     is_rh = (plot_type == "Radial-Height Profile")
@@ -100,7 +100,6 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                 _s_lat_min, _s_lat_max = st.session_state.get('_slider_lat_bounds', (_gd_lat[0], _gd_lat[1]))
                 init_state('v_lat_range', _gd_lat)
                 
-                # --- NEW: Defensively clamp Lat to prevent out-of-bounds crashes ---
                 c_lat_min, c_lat_max = st.session_state.v_lat_range
                 c_lat_min = max(_s_lat_min, min(c_lat_min, _s_lat_max))
                 c_lat_max = max(_s_lat_min, min(c_lat_max, _s_lat_max))
@@ -114,7 +113,6 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                 _s_lon_min, _s_lon_max = st.session_state.get('_slider_lon_bounds', (_gd_lon[0], _gd_lon[1]))
                 init_state('v_lon_range', _gd_lon)
                 
-                # --- NEW: Defensively clamp Lon to prevent out-of-bounds crashes ---
                 c_lon_min, c_lon_max = st.session_state.v_lon_range
                 c_lon_min = max(_s_lon_min, min(c_lon_min, _s_lon_max))
                 c_lon_max = max(_s_lon_min, min(c_lon_max, _s_lon_max))
@@ -125,18 +123,43 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
 
             domain_bounds = {'lat_min': lat_range[0], 'lat_max': lat_range[1], 'lon_min': lon_range[0], 'lon_max': lon_range[1]}
 
-        vert_range  = None
-        convert_dom = False
+        vert_range   = None
+        convert_dom  = False
+        domain_z_col = None
+        rh_z_col     = None
+        z_con        = None
+        plot_z_col   = None
 
-        if is_rh and rh_z_col:
-            domain_z_col = rh_z_col
-        else:
-            domain_z_col = st.session_state.get('v_vert_coord') or (target_col if target_col else target_col_3d)
+        # --- NEW INTEGRATED VERTICAL CONTROLS ---
+        if options and df_sel is not None:
+            init_state('v_vert_coord', options[0])
+            if st.session_state.v_vert_coord not in options:
+                st.session_state.v_vert_coord = options[0]
+                
+            domain_z_col = st.session_state.v_vert_coord
 
-        if options and df_sel is not None and domain_z_col:
             v_unit_dom = decode_metadata(data_pack['var_attrs'].get(sel_group, {}).get(domain_z_col, {}).get('units', ''))
             convert_dom = 'Pa' in v_unit_dom and 'hPa' not in v_unit_dom
             if convert_dom: v_unit_dom = 'hPa'
+            
+            unit_str = f"({v_unit_dom})" if v_unit_dom else ""
+
+            v1, v2 = st.columns([1.1, 1.8])
+            with v1: 
+                sidebar_label(f'Vertical Range {unit_str}:', enabled=True, size='label')
+            with v2: 
+                def _fmt_vert(x):
+                    meta = data_pack.get('var_attrs', {}).get(sel_group, {}).get(x, {})
+                    long = decode_metadata(meta.get('long_name', '')) or x.replace('_', ' ').title()
+                    return long.title()
+                
+                # The dropdown to select which Z coordinate to use
+                st.selectbox("VCoord", options, key='v_vert_coord', label_visibility="collapsed", format_func=_fmt_vert)
+
+            # Check if coordinates were swapped so we can safely reset the slider boundaries
+            if st.session_state.get('v_last_coord') != domain_z_col:
+                st.session_state.pop('v_vert_range', None)
+                st.session_state.v_last_coord = domain_z_col
 
             vert_vals = df_sel[domain_z_col].dropna().values
             if len(vert_vals) > 0:
@@ -160,15 +183,21 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                 if c_min > c_max: c_min = c_max
                 st.session_state.v_vert_range = (c_min, c_max)
 
-                v1, v2 = st.columns([1.0, 2.2])
-                with v1: sidebar_label(f'Vert ({v_unit_dom}):', enabled=True, size='label')
-                with v2: vert_range_ui = st.slider("Vertical Limits", min_value=zmin_global, max_value=zmax_global, key='v_vert_range', step=0.01, label_visibility="collapsed")
+                # The vertical slider (spans full width under the label/dropdown)
+                vert_range_ui = st.slider("Vertical Limits", min_value=zmin_global, max_value=zmax_global, key='v_vert_range', step=0.01, label_visibility="collapsed")
 
                 vert_range = vert_range_ui
                 domain_bounds['z_min']     = vert_range[0]
                 domain_bounds['z_max']     = vert_range[1]
                 domain_bounds['z_col']     = domain_z_col
                 domain_bounds['z_convert'] = convert_dom
+                
+                if is_rh:
+                    rh_z_col = domain_z_col
+                else:
+                    # In Cartesian/SR modes, this slider implicitly acts as the Z-filter!
+                    z_con = {'col': domain_z_col, 'val': (vert_range[1] + vert_range[0]) / 2.0, 'tol': abs(vert_range[1] - vert_range[0]) / 2.0, 'convert_pa_to_hpa': convert_dom}
+                    plot_z_col = domain_z_col if not is_3d else (target_col_3d if target_col_3d else domain_z_col)
 
         b1, b2 = st.columns(2)
         b1.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
@@ -201,14 +230,14 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                         st.toast("⚠️ No data available to fit.", icon="⚠️")
                     else:
                         temp_df = _fit_df.copy()
-                        if (st.session_state.get('v_use_filter') and 'v_vert_coord' in st.session_state and 'v_lvl_range' in st.session_state):
-                            t_col = st.session_state.v_vert_coord
-                            if t_col in temp_df.columns:
-                                vmin, vmax = st.session_state.v_lvl_range
-                                v_unit = decode_metadata(data_pack['var_attrs'].get(sel_group, {}).get(t_col, {}).get('units', ''))
-                                conv = 'Pa' in v_unit and 'hPa' not in v_unit
-                                t_vals = temp_df[t_col] / 100.0 if conv else temp_df[t_col]
-                                temp_df = temp_df[(t_vals >= vmin) & (t_vals <= vmax)]
+                        
+                        # Apply vertical domain limit to fit if in cartesian
+                        if domain_z_col and domain_z_col in temp_df.columns and 'v_vert_range' in st.session_state:
+                            vmin, vmax = st.session_state.v_vert_range
+                            v_unit = decode_metadata(data_pack['var_attrs'].get(sel_group, {}).get(domain_z_col, {}).get('units', ''))
+                            conv = 'Pa' in v_unit and 'hPa' not in v_unit
+                            t_vals = temp_df[domain_z_col] / 100.0 if conv else temp_df[domain_z_col]
+                            temp_df = temp_df[(t_vals >= vmin) & (t_vals <= vmax)]
 
                         time_col = next((c for c in temp_df.columns if c.lower() in ['time', 'date', 'datetime', 'epoch']), None)
                         is_track_fit = 'TRACK' in sel_group.upper()
@@ -282,7 +311,7 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                     del st.session_state.viewer_state['v_sr_max_range']
                 st.rerun()
 
-    return domain_bounds, convert_dom, vert_range, domain_z_col
+    return domain_bounds, convert_dom, vert_range, domain_z_col, rh_z_col, z_con, plot_z_col
 
 
 def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
@@ -374,10 +403,12 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
         with tb1:
             if st.button("⏱️ Auto-fit time", width="stretch", key='btn_time_fit') or consume_flag('_trigger_time_fit'):
                 temp_df = df_sel.copy()
-                if (st.session_state.get('v_use_filter') and 'v_vert_coord' in st.session_state and 'v_lvl_range' in st.session_state):
-                    t_col = st.session_state.v_vert_coord
+                
+                # Use the new domain-level Z filter when autofitting time
+                if domain_bounds and domain_bounds.get('z_col') and 'v_vert_range' in st.session_state:
+                    t_col = domain_bounds['z_col']
                     if t_col in temp_df.columns:
-                        vmin, vmax = st.session_state.v_lvl_range
+                        vmin, vmax = st.session_state.v_vert_range
                         v_unit = decode_metadata(data_pack['var_attrs'].get(sel_group, {}).get(t_col, {}).get('units', ''))
                         conv = 'Pa' in v_unit and 'hPa' not in v_unit
                         t_vals  = temp_df[t_col] / 100.0 if conv else temp_df[t_col]

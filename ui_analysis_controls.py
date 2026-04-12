@@ -5,6 +5,8 @@ ui_analysis_controls.py
 Sidebar widget logic for the Statistical Analysis tab.
 """
 
+import re
+import pandas as pd
 import streamlit as st
 from dataclasses import dataclass, field
 from typing import Optional, Dict
@@ -86,17 +88,58 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
             extra_coords = [c for c in coord_vars if c not in base_vars]
             
             combined_vars = base_vars + extra_coords
-            ordered       = plotter.sort_variables(combined_vars, sel_group)
-                
+            
+            # =================================================================
+            # STRICT AZIMUTH VALIDATION (Checks for BOTH Speed and Direction)
+            # =================================================================
+            valid_azimuths = ['azimuth_north']
+            
+            # 1. Storm Motion (Extract numbers to verify vector completeness)
+            sm_raw = data_pack.get('meta', {}).get('info', {}).get('storm_motion')
+            if sm_raw is not None:
+                nums = re.findall(r'[-+]?\d*\.?\d+', str(sm_raw))
+                if len(nums) >= 2:  # Must have at least two numerical values
+                    valid_azimuths.append('azimuth_motion')
+                    
+            # 2. SHIPS Shear Vectors
+            if 'ships_params' in data_pack.get('data', {}):
+                ships_df = data_pack['data']['ships_params']
+                # Deep Layer
+                if 'shrd_kt' in ships_df.columns and 'shtd_deg' in ships_df.columns:
+                    if pd.notna(ships_df['shrd_kt'].iloc[0]) and pd.notna(ships_df['shtd_deg'].iloc[0]):
+                        valid_azimuths.append('azimuth_shear_deep')
+                # Vortex Removed
+                if 'shdc_kt' in ships_df.columns and 'sddc_deg' in ships_df.columns:
+                    if pd.notna(ships_df['shdc_kt'].iloc[0]) and pd.notna(ships_df['sddc_deg'].iloc[0]):
+                        valid_azimuths.append('azimuth_shear_vortex')
+
+            # --- THE FIX: Force inject valid azimuths so the UI sees them ---
+            for az in valid_azimuths:
+                if az not in combined_vars:
+                    combined_vars.append(az)
+            # ----------------------------------------------------------------
+
+            # NOW sort them, after we've guaranteed the valid azimuths are inside
+            ordered_raw   = plotter.sort_variables(combined_vars, sel_group)
+
+            # Filter the ordered lists so invalid azimuths NEVER appear in the dropdowns
+            ordered = [v for v in ordered_raw if not (v.lower().startswith('azimuth_') and v.lower() not in valid_azimuths)]
+            
             list_1 = ordered
-            list_2 = ordered if (is_scatter or is_2d_hist) else plotter.get_coordinate_variables(sel_group)
+            if (is_scatter or is_2d_hist):
+                list_2 = ordered
+            else:
+                coord_list_raw = plotter.get_coordinate_variables(sel_group)
+                list_2 = [v for v in coord_list_raw if not (v.lower().startswith('azimuth_') and v.lower() not in valid_azimuths)]
+            # =================================================================
 
             v1_state = st.session_state.get('a_variable', list_1[0] if list_1 else "")
             v2_state = st.session_state.get('a_coord_var', list_2[0] if list_2 else "")
             v1_lower = v1_state.lower() if v1_state else ""
             v2_lower = v2_state.lower() if v2_state else ""
             
-            has_az   = "azimuth_north" in [v1_lower, v2_lower] or "azimuth_motion" in [v1_lower, v2_lower]
+            # Dynamically check if any selected variable is an azimuth
+            has_az   = any(v.startswith("azimuth_") for v in [v1_lower, v2_lower])
             has_dist = "dist_from_center" in [v1_lower, v2_lower]
             is_polar_eligible = has_az and has_dist and not is_1d_hist
             is_polar = is_polar_eligible and st.session_state.get('a_coord_sys') == "Polar"
@@ -131,7 +174,6 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
                         st.session_state.a_scale_coord_var = "Linear scale"
                     st.selectbox("Plot on:", ["Linear scale", "Log scale"], key='a_scale_coord_var', disabled=(is_1d_hist or is_polar))
                 
-                # --- MOVED REVERSE AXES CHECKBOX ---
                 init_state('a_reverse_axes', False)
                 if is_polar and st.session_state.a_reverse_axes:
                     st.session_state.a_reverse_axes = False
@@ -229,7 +271,9 @@ def render_analysis_controls() -> AnalysisIntent:
 
         v1_lower = intent.variable.lower() if intent.variable else ""
         v2_lower = intent.coord_var.lower() if intent.coord_var else ""
-        has_az   = "azimuth_north" in [v1_lower, v2_lower] or "azimuth_motion" in [v1_lower, v2_lower]
+        
+        # Dynamically checks for ANY azimuth flag matching the new generalized string pattern
+        has_az   = any(v.startswith("azimuth_") for v in [v1_lower, v2_lower])
         has_dist = "dist_from_center" in [v1_lower, v2_lower]
         is_polar_eligible = has_az and has_dist and not is_1d_hist
 

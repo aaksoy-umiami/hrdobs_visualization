@@ -6,6 +6,7 @@ File upload section for the File Data Viewer tab.
 """
 
 import streamlit as st
+import pandas as pd
 
 from config import EXPECTED_GROUPS, EXPECTED_META
 from data_utils import (
@@ -121,5 +122,52 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                     )
                 meta_html += "</table>"
                 st.markdown(meta_html, unsafe_allow_html=True)
+
+            with st.expander("🛳️ View SHIPS Parameters", expanded=False):
+                ships_html = f"<div style='font-size: {FS_BODY}px; line-height: 1.6; padding: 5px;'>"
+                
+                # Check if the group exists and is not empty
+                if 'ships_params' in current_pack['data'] and not current_pack['data']['ships_params'].empty:
+                    ships_df = current_pack['data']['ships_params']
+                    ships_html += (
+                        f"<table style='font-size: {FS_TABLE}px; width: 100%; text-align: left; "
+                        "border-collapse: collapse;'>"
+                        "<tr style='border-bottom: 2px solid #ddd;'>"
+                        "<th style='padding: 8px;'>Parameter</th>"
+                        "<th style='padding: 8px;'>Value</th>"
+                        "<th style='padding: 8px;'>Units</th></tr>"
+                    )
+                    
+                    for col in ships_df.columns:
+                        val = ships_df[col].iloc[0]
+                        # Format numbers neatly, handle NaNs
+                        if pd.isna(val):
+                            val_str = "<span style='color: red;'>NaN</span>"
+                        elif isinstance(val, (int, float)):
+                            val_str = f"{val:.2f}" if val % 1 != 0 else f"{int(val)}"
+                        else:
+                            val_str = str(val)
+                            
+                        # Extract units and long name if available
+                        units = current_pack['var_attrs'].get('ships_params', {}).get(col, {}).get('units', '')
+                        long_name = current_pack['var_attrs'].get('ships_params', {}).get(col, {}).get('long_name', '')
+                        
+                        # Add hover tooltip for the long name
+                        if long_name:
+                            col_display = f"<span title='{long_name}' style='cursor:help; border-bottom: 1px dotted #ccc;'>{col}</span>"
+                        else:
+                            col_display = str(col)
+                        
+                        ships_html += (
+                            f"<tr><td style='padding: 6px;'><b>{col_display}</b></td>"
+                            f"<td style='padding: 6px;'>{val_str}</td>"
+                            f"<td style='padding: 6px; color: gray;'>{units}</td></tr>"
+                        )
+                else:
+                    # Fallback if no SHIPS data exists for this file
+                    ships_html += f"<span style='color: {CLR_MUTED};'><i>No SHIPS data for this cycle</i></span>"
+                    
+                ships_html += "</div>"
+                st.markdown(ships_html, unsafe_allow_html=True)
 
     return st.session_state.get(data_pack_key)

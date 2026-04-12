@@ -10,6 +10,7 @@ EXPECTED_GROUPS = [
     "flight_level_hdobs_noaa42", "flight_level_hdobs_noaa43", "flight_level_hdobs_noaa49", "flight_level_hdobs_usaf",
     "sfmr_noaa42", "sfmr_noaa43", "sfmr_usaf",
     "tdr_noaa42", "tdr_noaa43", "tdr_noaa49",
+    "ships_params",
     "track_best_track", "track_spline_track", "track_vortex_message"
 ]
 
@@ -93,7 +94,9 @@ GLOBAL_VAR_CONFIG = {
     # --- TIER 3: DERIVED SPATIAL COORDINATES (is_derived=True, is_coord=True) ---
     'dist_from_center': {'colorscale': 'Turbo', 'cmin': 0, 'hide': False, 'sort_weight': 100, 'display_name': 'Distance from Storm Center (km)', 'is_coord': True, 'is_derived': True, 'sort_order': 1},
     'azimuth_north': {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False, 'sort_weight': 101, 'display_name': 'Azimuth from North (Computed) (deg)', 'is_coord': True, 'is_derived': True, 'sort_order': 2},
-    'azimuth_motion': {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False, 'sort_weight': 102, 'display_name': 'Azimuth from Storm Motion (Computed) (deg)', 'is_coord': True, 'is_derived': True, 'sort_order': 3}
+    'azimuth_motion': {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False, 'sort_weight': 102, 'display_name': 'Azimuth from Storm Motion (Computed) (deg)', 'is_coord': True, 'is_derived': True, 'sort_order': 3},
+    'azimuth_shear_deep': {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False, 'sort_weight': 103, 'display_name': 'Azimuth from 850-200 hPa Shear (Computed) (deg)', 'is_coord': True, 'is_derived': True, 'sort_order': 4},
+    'azimuth_shear_vortex': {'colorscale': 'hsv', 'cmin': 0, 'cmax': 360, 'hide': False, 'sort_weight': 104, 'display_name': 'Azimuth from Vortex-Removed Shear (Computed) (deg)', 'is_coord': True, 'is_derived': True, 'sort_order': 5}
 }
 
 # --- AUTOMATIC UNIT CONVERSIONS ---

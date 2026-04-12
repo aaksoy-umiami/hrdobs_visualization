@@ -90,13 +90,15 @@ class StormPlotterBase:
     def _ensure_derived_spatial_coords(self, group_name):
         """
         Dynamically calculates Distance from Center, Azimuth from North, 
-        and Azimuth from Storm Motion if not already present.
+        Azimuth from Storm Motion, and Shear Azimuths if not already present.
         """
         if group_name not in self.data or group_name.startswith('track_'):
             return
         df = self.data[group_name]
         
-        if all(col in df.columns for col in ['dist_from_center', 'azimuth_north', 'azimuth_motion']):
+        # Ensure we don't recalculate if all 5 spatial columns already exist
+        expected_cols = ['dist_from_center', 'azimuth_north', 'azimuth_motion', 'azimuth_shear_deep', 'azimuth_shear_vortex']
+        if all(col in df.columns for col in expected_cols):
             return
 
         from datetime import datetime, timezone
@@ -169,16 +171,36 @@ class StormPlotterBase:
         dist       = np.sqrt(x_km**2 + y_km**2)
         az_north   = np.degrees(np.arctan2(x_km, y_km)) % 360
         az_motion  = (az_north - mean_heading) % 360
+        
+        # =========================================================
+        # --- NEW: SHIPS SHEAR AZIMUTH CALCULATION ---
+        # =========================================================
+        az_shear_deep = np.full_like(az_north, np.nan)
+        az_shear_vortex = np.full_like(az_north, np.nan)
+        
+        if 'ships_params' in self.data:
+            ships_df = self.data['ships_params']
+            
+            if 'shtd_deg' in ships_df.columns and pd.notna(ships_df['shtd_deg'].iloc[0]):
+                az_shear_deep = (az_north - float(ships_df['shtd_deg'].iloc[0])) % 360
+                
+            if 'sddc_deg' in ships_df.columns and pd.notna(ships_df['sddc_deg'].iloc[0]):
+                az_shear_vortex = (az_north - float(ships_df['sddc_deg'].iloc[0])) % 360
+        # =========================================================
 
         nan_mask   = (~np.isfinite(obs_epochs) | df[lat_c].isna().values | df[lon_c].isna().values)
         
         dist[nan_mask]      = np.nan
         az_north[nan_mask]  = np.nan
         az_motion[nan_mask] = np.nan
+        az_shear_deep[nan_mask]   = np.nan
+        az_shear_vortex[nan_mask] = np.nan
 
         df['dist_from_center'] = dist
         df['azimuth_north']    = az_north
         df['azimuth_motion']   = az_motion
+        df['azimuth_shear_deep']   = az_shear_deep
+        df['azimuth_shear_vortex'] = az_shear_vortex
         
         if group_name not in self.var_attrs:
             self.var_attrs[group_name] = {}
@@ -186,6 +208,8 @@ class StormPlotterBase:
         self.var_attrs[group_name]['dist_from_center'] = {'units': 'km', 'long_name': 'Distance from Storm Center (Computed)'}
         self.var_attrs[group_name]['azimuth_north']    = {'units': 'deg', 'long_name': 'Azimuth from North (Computed)'}
         self.var_attrs[group_name]['azimuth_motion']   = {'units': 'deg', 'long_name': 'Azimuth from Storm Motion (Computed)'}
+        self.var_attrs[group_name]['azimuth_shear_deep']   = {'units': 'deg', 'long_name': 'Azimuth from 850-200 hPa Shear (Computed)'}
+        self.var_attrs[group_name]['azimuth_shear_vortex'] = {'units': 'deg', 'long_name': 'Azimuth from Vortex-Removed Shear (Computed)'}
 
     def sort_variables(self, var_list, group_name):
         """
@@ -420,10 +444,23 @@ class StormPlotterBase:
             val = z_con['val']
             tol = z_con['tol']
             zv = plot_df[t_col] / 100.0 if z_con.get('convert_pa_to_hpa') else plot_df[t_col]
-            mask = (zv >= val - tol) & (zv <= val + tol)
+            
+            min_val = val - tol
+            max_val = val + tol
+            
+            mask = (zv >= min_val) & (zv <= max_val)
             plot_df = plot_df[mask]
-            unit_str = "hPa" if z_con.get('convert_pa_to_hpa') else ""
-            constraint_lbl = f"Level: {val} ± {tol} {unit_str}"
+            
+            # Smart unit detection: checks for pressure columns, otherwise defaults to meters
+            if z_con.get('convert_pa_to_hpa') or any(p in t_col.lower() for p in ['pres', 'pressure', 'p']):
+                unit_str = "hPa"
+            else:
+                unit_str = z_con.get('units', 'm')
+                
+            # Add exactly one space before the unit
+            unit_suffix = f" {unit_str}" if unit_str else ""
+            
+            constraint_lbl = f"Vertical Level: {min_val} - {max_val}{unit_suffix}"    
         if plot_df.empty: return plot_df, constraint_lbl
 
         if time_bounds and time_bounds.get('col') in plot_df.columns:

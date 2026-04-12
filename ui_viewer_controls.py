@@ -51,13 +51,14 @@ class ViewerIntent:
     default_lat_max:  float           = 0.0
     default_lon_min:  float           = 0.0
     default_lon_max:  float           = 0.0
+    cen_vector_dir:   str             = "North"
 
 _VIEWER_STATE_KEYS = [
     'v_sel_group', 'v_variable', 'v_use_filter', 'v_vert_coord',
     'v_lvl_range', 'v_is_3d', 'v_3d_z', 'v_plot_track', 'v_sel_plat',
     'v_3d_ratio', 'v_apply_thinning', 'v_thin_pct', 'v_marker_size',
     'v_lat_range', 'v_lon_range', 'v_time_range', 'v_show_cen', 'v_cen_mode',
-    'v_clat', 'v_clon', 'v_track_proj', 'v_vert_range', 'v_color_scale',
+    'v_cen_vector_dir', 'v_clat', 'v_clon', 'v_track_proj', 'v_vert_range', 'v_color_scale',
     'v_plot_err', 'v_vec_scale', 'v_show_basemap',
     'v_plot_type', 'v_sr_up', 'v_sr_track_grp', 'v_custom_colorscale'
 ]
@@ -91,18 +92,15 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
             '_slider_time_bounds', '_slider_lat_bounds', '_slider_lon_bounds'
         ]
         
-        # Clear from the active session state
         for k in keys_to_clear:
             if k in st.session_state:
                 del st.session_state[k]
                 
-        # CRITICAL FIX: Clear from the persistent viewer_state backup dictionary
         if 'viewer_state' in st.session_state:
             for k in keys_to_clear:
                 if k in st.session_state.viewer_state:
                     del st.session_state.viewer_state[k]
 
-        # Tell the UI to automatically run the fit logic
         st.session_state._trigger_auto_fit = True
         st.session_state._trigger_time_fit = True
 
@@ -131,16 +129,9 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
             h_col = next((cols_lower[c] for c in ['height', 'ght', 'altitude', 'elev'] if c in cols_lower), None)
             p_col = next((cols_lower[c] for c in ['pres', 'pressure', 'p'] if c in cols_lower), None)
 
-        exclude_col = (st.session_state.get('v_vert_coord') if st.session_state.get('v_use_filter') else None)
-
-        rh_z_col = None
-        if plot_type == "Radial-Height Profile":
-            rh_z_options = [c for c in [h_col, p_col] if c]
-            if rh_z_options:
-                init_state('v_rh_z_col', rh_z_options[0])
-                if st.session_state.v_rh_z_col not in rh_z_options:
-                    st.session_state.v_rh_z_col = rh_z_options[0]
-                rh_z_col = st.session_state.v_rh_z_col
+        # Let the domain UI handle the vertical filter
+        exclude_col = None
+        rh_z_col = st.session_state.get('v_vert_coord')
 
         vars_list = plotter.get_plottable_variables(
             sel_group, active_z_col=exclude_col or rh_z_col, exclude_vectors=False
@@ -189,16 +180,16 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
         else:
             st.stop()
 
-    return sel_group, variable, plot_var, color_scale, h_col, p_col, df_sel, cols_lower, rh_z_col
+    return sel_group, variable, plot_var, color_scale, h_col, p_col, df_sel, cols_lower
 
 
 def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, p_col=None, plotter=None):
     available_tracks = []
-    track_candidates = ['track_best_track', 'track_spline_track', 'track_vortex_message']
-    for t in track_candidates:
-        if t in data_pack['data'] and len(data_pack['data'][t]) >= 2:
-            if not sel_group or t.lower() != sel_group.lower():
-                available_tracks.append(t)
+    for grp in data_pack.get('data', {}).keys():
+        if grp.lower().startswith('track_') and len(data_pack['data'][grp]) >= 2:
+            if not sel_group or grp.lower() != sel_group.lower():
+                available_tracks.append(grp)
+    available_tracks = sorted(available_tracks)
 
     _sr_available = (len(available_tracks) > 0 and not is_3d_state_in)
     _PLOT_TYPES = ["Horizontal Cartesian", "Horizontal Storm-Relative", "Radial-Height Profile"]
@@ -210,10 +201,18 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
 
     current_plot_type = st.session_state.get('v_plot_type', "Horizontal Cartesian")
     if st.session_state.get('_prev_plot_type') != current_plot_type:
+        prev_plot = st.session_state.get('_prev_plot_type')
         if current_plot_type == "Horizontal Storm-Relative":
             st.session_state.v_show_cen = True
         elif current_plot_type == "Radial-Height Profile":
             st.session_state.v_show_cen = False
+            
+        if prev_plot == "Radial-Height Profile" or current_plot_type == "Radial-Height Profile":
+            for k in ['v_vert_range', '_last_dom_z_col']:
+                st.session_state.pop(k, None)
+                if 'viewer_state' in st.session_state:
+                    st.session_state.viewer_state.pop(k, None)
+
         st.session_state._prev_plot_type = current_plot_type
 
     with st.sidebar.container(border=True):
@@ -240,44 +239,107 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
             return t.replace('_', ' ').title()
 
         if available_tracks:
-            init_state('v_sr_track_grp', 'track_spline_track' if 'track_spline_track' in available_tracks else available_tracks[0])
+            default_track = 'track_spline_track' if 'track_spline_track' in available_tracks else available_tracks[0]
+            init_state('v_sr_track_grp', default_track)
             if st.session_state.v_sr_track_grp not in available_tracks:
-                st.session_state.v_sr_track_grp = 'track_spline_track' if 'track_spline_track' in available_tracks else available_tracks[0]
+                st.session_state.v_sr_track_grp = default_track
 
         sr_track_grp = st.selectbox(
-            "Reference Track", options=available_tracks if available_tracks else ["No alternate track available"],
+            "Reference Track Source", options=available_tracks if available_tracks else ["No track available"],
             key='v_sr_track_grp' if available_tracks else 'v_sr_track_grp_dummy',
-            disabled=not requires_track or not available_tracks,
-            format_func=lambda x: format_track_name(x) if x in available_tracks else x
+            disabled=(not available_tracks) or (not requires_track),
+            format_func=lambda x: format_track_name(x) if x in available_tracks else x,
         )
 
         if not requires_track or not available_tracks:
             sr_track_grp = None
 
+        has_valid_motion = False
+        sm_raw = data_pack.get('meta', {}).get('info', {}).get('storm_motion')
+        if sm_raw is not None:
+            try:
+                if isinstance(sm_raw, (list, tuple)):
+                    sm_dir = float(sm_raw[0])
+                else:
+                    sm_dir = float(sm_raw)
+                if not math.isnan(sm_dir):
+                    has_valid_motion = True
+            except (ValueError, TypeError):
+                pass
+
+        sr_up_options = ["Relative to North"]
+        if has_valid_motion:
+            sr_up_options.append("Relative to Storm Motion")
+            
+        # --- NEW: Check for SHIPS Shear Data ---
+        if 'ships_params' in data_pack.get('data', {}):
+            ships_df = data_pack['data']['ships_params']
+            
+            # Deep Layer Shear (850-200 hPa)
+            if 'shrd_kt' in ships_df.columns and 'shtd_deg' in ships_df.columns:
+                mag = ships_df['shrd_kt'].iloc[0]
+                dr  = ships_df['shtd_deg'].iloc[0]
+                if pd.notna(mag) and pd.notna(dr):
+                    sr_up_options.append("Relative to 850-200 hPa Shear")
+                    
+            # Vortex-Removed Shear
+            if 'shdc_kt' in ships_df.columns and 'sddc_deg' in ships_df.columns:
+                mag = ships_df['shdc_kt'].iloc[0]
+                dr  = ships_df['sddc_deg'].iloc[0]
+                if pd.notna(mag) and pd.notna(dr):
+                    sr_up_options.append("Relative to Vortex-Removed Shear")
+        # ---------------------------------------
+
         init_state('v_sr_up', "Relative to North")
 
-        sub_c1, sub_c2 = st.columns([1.1, 1.3])
+        if st.session_state.v_sr_up not in sr_up_options:
+            st.session_state.v_sr_up = "Relative to North"
+
         if is_sr:
+            sub_c1, sub_c2 = st.columns([1.1, 1.3])
             with sub_c1: sidebar_label("Upward Direction Represents:", enabled=True, size='label')
             with sub_c2:
-                sr_up_convention = st.selectbox("Up direction", ["Relative to North", "Relative to Storm Motion"], key='v_sr_up', disabled=False, label_visibility="collapsed")
-            rh_z_col = None
-        elif is_rh:
-            rh_z_options = [c for c in [h_col, p_col] if c]
-            init_state('v_rh_z_col', rh_z_options[0] if rh_z_options else None)
-            if st.session_state.get('v_rh_z_col') not in rh_z_options:
-                st.session_state.v_rh_z_col = rh_z_options[0] if rh_z_options else None
-                
-            with sub_c1: sidebar_label("Plot on Z axis:", enabled=bool(rh_z_options), size='label')
-            with sub_c2:
-                if rh_z_options and plotter:
-                    rh_z_col = st.selectbox("RH Z axis", rh_z_options, key='v_rh_z_col', disabled=False, label_visibility="collapsed", format_func=lambda x: plotter._get_var_display_name(sel_group, x))
-                else:
-                    rh_z_col = st.session_state.get('v_rh_z_col')
-            sr_up_convention = st.session_state.get('v_sr_up', "Relative to North")
+                sr_up_convention = st.selectbox("Up direction", sr_up_options, key='v_sr_up', disabled=False, label_visibility="collapsed")
         else:
             sr_up_convention = st.session_state.get('v_sr_up', "Relative to North")
-            rh_z_col = None
+
+        cen_mode_options = ["Plot Center Location", "Plot Center Vector"]
+        # Generate the vector options directly from the 'Up' convention options
+        vector_dir_options = [opt.replace("Relative to ", "") for opt in sr_up_options]
+
+        init_state('v_show_cen', True)
+        init_state('v_cen_mode', "Plot Center Location")
+        init_state('v_cen_vector_dir', "North")
+        
+        if st.session_state.v_cen_mode not in cen_mode_options:
+            st.session_state.v_cen_mode = "Plot Center Location"
+        if st.session_state.v_cen_vector_dir not in vector_dir_options:
+            st.session_state.v_cen_vector_dir = vector_dir_options[0]
+
+        c_cen1, c_cen2, c_cen3 = st.columns([1.6, 1.3, 1.3])
+        with c_cen1:
+            spacer('sm')
+            show_cen = st.checkbox(
+                "Nearest to Ctr Time:", 
+                key='v_show_cen', 
+                disabled=not available_tracks or is_rh
+            )
+        with c_cen2:
+            cen_mode = st.selectbox(
+                "Center Mode", 
+                cen_mode_options, 
+                key='v_cen_mode', 
+                disabled=not show_cen or not available_tracks or is_rh, 
+                label_visibility="collapsed"
+            )
+        with c_cen3:
+            cen_vector_dir = st.selectbox(
+                "Vector Direction", 
+                vector_dir_options, 
+                key='v_cen_vector_dir', 
+                disabled=not show_cen or cen_mode != "Plot Center Vector" or not available_tracks or is_rh, 
+                label_visibility="collapsed"
+            )
 
         section_divider()
 
@@ -305,7 +367,7 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
             init_state('v_3d_ratio', 0.3)
             z_ratio = st.slider("VAR", min_value=0.05, max_value=1.5, step=0.05, key='v_3d_ratio', disabled=not is_3d, label_visibility="collapsed")
 
-    return plot_type, sr_up_convention, sr_track_grp, rh_z_col, is_3d, target_col_3d, z_ratio, can_do_3d
+    return plot_type, sr_up_convention, sr_track_grp, is_3d, target_col_3d, z_ratio, can_do_3d, show_cen, cen_mode, cen_vector_dir
 
 
 def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lower, plot_var, plot_type, is_3d_state, target_col_3d):
@@ -330,18 +392,6 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
 
         is_rh  = (plot_type == "Radial-Height Profile")
         is_sr  = (plot_type == "Horizontal Storm-Relative")
-
-        init_state('v_show_cen', True)
-        init_state('v_cen_mode', "Display Location Only")
-
-        if is_rh: st.session_state.v_show_cen = False
-
-        c_cen1, c_cen2 = st.columns([1, 1.5])
-        with c_cen1:
-            spacer('sm')
-            show_cen = st.checkbox("Storm Center", key='v_show_cen', disabled=is_rh)
-        with c_cen2:
-            cen_mode = st.selectbox("Center Mode", ["Display Location Only", "Display As Motion Vector"], key='v_cen_mode', disabled=not show_cen or is_rh, label_visibility="collapsed")
 
         disable_map = is_3d_state or is_sr or is_rh
 
@@ -374,77 +424,34 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
 
         section_divider()
 
-        z_con       = None
-        target_col  = None
-        options     = [c for c in [h_col, p_col] if c]
-
-        init_state('v_use_filter', False)
-        if is_rh and st.session_state.v_use_filter: st.session_state.v_use_filter = False
-        if not options and st.session_state.v_use_filter: st.session_state.v_use_filter = False
-            
-        use_filter = st.checkbox("Filter by Level?", key='v_use_filter', disabled=not options or is_rh)
-
-        if options:
-            c_c, c_s = st.columns([1.2, 2.0])
-            if st.session_state.get('v_vert_coord') not in options:
-                st.session_state.v_vert_coord = options[0]
-            with c_c:
-                sidebar_label("Vertical Coord.", enabled=use_filter)
-                def _fmt_vert(x):
-                    meta = data_pack.get('var_attrs', {}).get(sel_group, {}).get(x, {})
-                    long = decode_metadata(meta.get('long_name', '')) or x.replace('_', ' ').title()
-                    units = decode_metadata(meta.get('units', ''))
-                    return f"{long.title()} ({units})" if units else long.title()
-                target_col = st.selectbox("VCoord", options, key='v_vert_coord', disabled=not use_filter, label_visibility="collapsed", format_func=_fmt_vert)
-            
-            v_unit = decode_metadata(data_pack['var_attrs'].get(sel_group, {}).get(target_col, {}).get('units', ''))
-            convert = 'Pa' in v_unit and 'hPa' not in v_unit
-            if convert: v_unit = 'hPa'
-
-            raw_vals = df_sel[target_col].dropna().values
-            if len(raw_vals) > 0:
-                if convert: raw_vals = raw_vals / 100.0
-                dmin, dmax = float(np.nanmin(raw_vals)), float(np.nanmax(raw_vals))
-                if dmin == dmax: dmax = dmin + 1.0
-                with c_s:
-                    sidebar_label(f"Range ({v_unit})", enabled=use_filter)
-                    if st.session_state.get('v_last_coord') != target_col:
-                        st.session_state.v_lvl_range  = (dmin, dmax)
-                        st.session_state.v_last_coord = target_col
-                    elif 'v_lvl_range' not in st.session_state:
-                        st.session_state.v_lvl_range = (dmin, dmax)
-                    else:
-                        c_min, c_max = st.session_state.v_lvl_range
-                        c_min = max(dmin, min(c_min, dmax))
-                        c_max = max(dmin, min(c_max, dmax))
-                        if c_min > c_max: c_min = c_max
-                        st.session_state.v_lvl_range = (c_min, c_max)
-
-                    lvl_range = st.slider("Range", min_value=dmin, max_value=dmax, key='v_lvl_range', disabled=not use_filter, label_visibility="collapsed")
-                if use_filter:
-                    z_con = {'col': target_col, 'val': (lvl_range[1] + lvl_range[0]) / 2.0, 'tol': abs(lvl_range[1] - lvl_range[0]) / 2.0, 'convert_pa_to_hpa': convert}
-
-        section_divider()
-
         available_groups  = sorted(list(data_pack['data'].keys()))
         flight_track_grps = [g for g in available_groups if g.lower().startswith('flight_level_hdobs')]
         track_mapping     = {g.split('_')[-1].upper(): g for g in flight_track_grps}
+
+        # --- NEW LOGIC: Determine if track overlay should be disabled ---
+        is_track_group = sel_group.startswith("track_")
+        disable_track = is_sr or is_track_group
+        # ----------------------------------------------------------------
 
         track_col1, track_col2 = st.columns([1.1, 1])
         with track_col1:
             spacer('sm')
             init_state('v_plot_track', False)
-            plot_track = st.checkbox("Plot flight track from:", key='v_plot_track', disabled=(len(track_mapping) == 0))
+            if disable_track:
+                st.session_state.v_plot_track = False
+            plot_track = st.checkbox("Plot flight track from:", key='v_plot_track', disabled=(len(track_mapping) == 0) or disable_track)
         with track_col2:
             init_state('v_sel_plat', list(track_mapping.keys())[0] if track_mapping else None)
             if st.session_state.v_sel_plat not in track_mapping:
                 st.session_state.v_sel_plat = list(track_mapping.keys())[0] if track_mapping else None
                 
-            selected_platform = (st.selectbox("Platform", list(track_mapping.keys()), key='v_sel_plat', disabled=not plot_track, label_visibility="collapsed") if track_mapping else None)
+            selected_platform = (st.selectbox("Platform", list(track_mapping.keys()), key='v_sel_plat', disabled=(not plot_track) or disable_track, label_visibility="collapsed") if track_mapping else None)
 
         p_c1, p_c2 = st.columns([1.4, 1])
         with p_c1:
             proj_disabled = True if is_rh else not (plot_track and is_3d_state)
+            if disable_track:
+                proj_disabled = True
             p_color       = "inherit" if not proj_disabled else CLR_MUTED
             st.markdown(f"<div style='margin-top: 8px; font-size: {FS_BODY}px; font-weight: 500; color: {p_color};'>Display track projection:</div>", unsafe_allow_html=True)
         with p_c2:
@@ -452,13 +459,14 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
             if is_rh:
                 st.session_state.v_track_proj = "Show" if plot_track else "None"
                 proj_options = ["Show"] if plot_track else ["None"]
+            elif disable_track:
+                st.session_state.v_track_proj = "None"
+                proj_options = ["None"]
             else:
                 proj_options = ["None", "Bottom Only", "Sides Only", "Bottom + Sides"]
                 if st.session_state.v_track_proj not in proj_options:
                     st.session_state.v_track_proj = proj_options[0]
             track_proj = st.selectbox("Projection", proj_options, key='v_track_proj', disabled=proj_disabled, label_visibility="collapsed")
-
-        plot_z_col = target_col if use_filter else (target_col_3d if options else None)
 
         section_divider()
 
@@ -476,10 +484,8 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
                 marker_sz = st.slider("Marker Size", min_value=10, max_value=200, step=10, format="%d%%", key='v_marker_size', label_visibility="collapsed")
                 vec_scale = 1.0
 
-    return (show_cen, cen_mode, apply_thinning, thin_pct, z_con, target_col,
-            track_mapping, plot_track, selected_platform,
-            track_proj, plot_z_col, marker_sz, vec_scale,
-            custom_colorscale)
+    return (apply_thinning, thin_pct, track_mapping, plot_track, 
+            selected_platform, track_proj, marker_sz, vec_scale, custom_colorscale)
 
 def render_viewer_controls(plotter) -> ViewerIntent:
     intent = ViewerIntent()
@@ -494,12 +500,11 @@ def render_viewer_controls(plotter) -> ViewerIntent:
 
     if data_pack is None: return intent
     intent.data_pack = data_pack
-    
-    # --- NEW: Detect file swaps and nuke the ghost memory boundaries ---
+
     current_file = st.session_state.get('last_uploaded_filename')
     if st.session_state.get('_prev_viewer_file') != current_file:
         keys_to_purge = ['_slider_lat_bounds', '_slider_lon_bounds', '_slider_time_bounds', 
-                         'v_lat_range', 'v_lon_range', 'v_time_range', 'v_vert_range']
+                         'v_lat_range', 'v_lon_range', 'v_time_range', 'v_vert_range', 'v_vert_coord']
         for k in keys_to_purge:
             st.session_state.pop(k, None)
             if 'viewer_state' in st.session_state:
@@ -508,7 +513,6 @@ def render_viewer_controls(plotter) -> ViewerIntent:
         st.session_state._trigger_auto_fit = True
         st.session_state._trigger_time_fit = True
         st.session_state['_prev_viewer_file'] = current_file
-    # ------------------------------------------------------------------
 
     from plotter import StormPlotter
     plotter = StormPlotter(data_pack['data'], data_pack['track'], data_pack['meta'], data_pack['var_attrs'])
@@ -529,55 +533,58 @@ def render_viewer_controls(plotter) -> ViewerIntent:
     intent.default_lon_max = _extract_strict_bound(data_pack, 'geospatial_lon_max') or 0.0
 
     plot_type = st.session_state.get('v_plot_type', 'Horizontal Cartesian')
-    (sel_group, variable, plot_var, color_scale, h_col, p_col, df_sel, cols_lower, rh_z_col) = _render_variable_section(data_pack, plotter, plot_type)
+    (sel_group, variable, plot_var, color_scale, h_col, p_col, df_sel, cols_lower) = _render_variable_section(data_pack, plotter, plot_type)
     intent.sel_group   = sel_group
     intent.variable    = variable
     intent.plot_var    = plot_var
     intent.color_scale = color_scale
 
     _cur_is_3d = st.session_state.get('v_is_3d', False)
-    plot_type, sr_up_convention, sr_track_grp, rh_z_col, is_3d, target_col_3d, z_ratio, can_do_3d = _render_plot_type_section(
+    # 1. Add cen_vector_dir to the unpacked variables here:
+    plot_type, sr_up_convention, sr_track_grp, is_3d, target_col_3d, z_ratio, can_do_3d, show_cen, cen_mode, cen_vector_dir = _render_plot_type_section(
         data_pack, sel_group, _cur_is_3d, h_col=h_col, p_col=p_col, plotter=plotter
     )
 
-    (show_cen, cen_mode, apply_thinning, thin_pct, z_con, target_col,
-     track_mapping, plot_track, selected_platform,
-     track_proj, plot_z_col, marker_sz, vec_scale,
-     custom_colorscale) = _render_plotting_options(
+    intent.show_cen = show_cen
+    intent.cen_mode = cen_mode
+    intent.cen_vector_dir = cen_vector_dir
+
+    (apply_thinning, thin_pct, track_mapping, plot_track, selected_platform,
+     track_proj, marker_sz, vec_scale, custom_colorscale) = _render_plotting_options(
          data_pack, sel_group, h_col, p_col, df_sel, cols_lower, plot_var, plot_type, is_3d, target_col_3d
      )
 
     intent.custom_colorscale = custom_colorscale
-    intent.show_cen          = show_cen
-    intent.cen_mode          = cen_mode
     intent.show_basemap      = st.session_state.get('v_show_basemap', False)
     intent.apply_thinning    = apply_thinning
     intent.thin_pct          = thin_pct
-    intent.z_con             = z_con
     intent.track_mapping     = track_mapping
     intent.plot_track        = plot_track
     intent.selected_platform = selected_platform
     intent.track_proj        = track_proj
     intent.is_3d             = is_3d
-    intent.plot_z_col        = plot_z_col
     intent.z_ratio           = z_ratio
     intent.marker_sz         = marker_sz
     intent.vec_scale         = vec_scale
     intent.plot_type         = plot_type
     intent.sr_up_convention  = sr_up_convention
     intent.sr_track_grp      = sr_track_grp
-    intent.rh_z_col          = rh_z_col
 
     from ui_viewer_domain import _render_domain_section, _render_time_section
     
-    (domain_bounds, convert_dom, vert_range, domain_z_col) = _render_domain_section(
+    # We will grab z_con, rh_z_col, and plot_z_col from the domain section now!
+    (domain_bounds, convert_dom, vert_range, domain_z_col, rh_z_col, z_con, plot_z_col) = _render_domain_section(
          data_pack, sel_group, df_sel, options=[c for c in [h_col, p_col] if c], 
-         target_col=target_col, target_col_3d=target_col_3d, is_3d=is_3d,
+         target_col_3d=target_col_3d, is_3d=is_3d,
          default_lat_min=intent.default_lat_min, default_lat_max=intent.default_lat_max, 
          default_lon_min=intent.default_lon_min, default_lon_max=intent.default_lon_max,
-         plot_type=plot_type, sr_track_grp=sr_track_grp, plotter=plotter, rh_z_col=rh_z_col
+         plot_type=plot_type, sr_track_grp=sr_track_grp, plotter=plotter
      )
+    
     intent.domain_bounds = domain_bounds
+    intent.rh_z_col = rh_z_col
+    intent.z_con = z_con
+    intent.plot_z_col = plot_z_col
 
     if df_sel is not None:
         intent.time_bounds = _render_time_section(

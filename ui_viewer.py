@@ -119,11 +119,12 @@ def render_viewer_tab():
             up_convention=intent.sr_up_convention,
             thinning_pct=active_thinning,
             marker_size_pct=intent.marker_sz,
-            vec_scale=intent.vec_scale,      # Passes slider scale
+            vec_scale=intent.vec_scale,      
             time_bounds=intent.time_bounds,
             color_scale=intent.color_scale,
             show_center=intent.show_cen,
             cen_mode=intent.cen_mode,
+            cen_vector_dir=intent.cen_vector_dir, # <--- NEW
             custom_colorscale=intent.custom_colorscale
         )
     else:
@@ -139,6 +140,7 @@ def render_viewer_tab():
             vec_scale=intent.vec_scale,
             show_basemap=intent.show_basemap,
             cen_mode=intent.cen_mode,
+            cen_vector_dir=intent.cen_vector_dir, # <--- NEW
             color_scale=intent.color_scale,
             custom_colorscale=intent.custom_colorscale
         )

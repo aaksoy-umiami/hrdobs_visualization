@@ -65,7 +65,7 @@ ui_components.py  ← Reusable Streamlit widget helpers
 ---------------------------------------------------------------------
 ## Data Flow & Expected Schema
 
-Uploaded .h5 file
+Uploaded .hdf5 file
         │
         ▼
 data_utils.load_data_from_h5()

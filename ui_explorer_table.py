@@ -60,6 +60,17 @@ def display_summary_table(final_df, unit):
         p_min, p_max = grp['MSLP_hPa'].min(), grp['MSLP_hPa'].max()
         p_range = f"{p_min:.1f} - {p_max:.1f}" if pd.notna(p_min) else ""
 
+        # SHIPS Ranges
+        def get_rng(col, fmt="{:.1f}"):
+            if col not in grp.columns: return ""
+            cmin, cmax = grp[col].min(), grp[col].max()
+            if pd.isna(cmin) or pd.isna(cmax): return ""
+            return f"{fmt.format(cmin)} - {fmt.format(cmax)}"
+            
+        shear_range = get_rng('shrd_kt')
+        mpi_range = get_rng('vmpi_kt')
+        rh_range = get_rng('rhmd_pct', "{:.0f}")
+
         # Sorted Unique Categories
         unique_cats = grp['TC_Category'].dropna().unique()
         sorted_cats = sorted(unique_cats, key=lambda x: cat_order.get(x, 99))
@@ -76,7 +87,10 @@ def display_summary_table(final_df, unit):
             'Lon Range': lon_range,
             'Intensity Range': int_range,
             'MSLP Range': p_range,
-            'Categories': cats_str
+            'Categories': cats_str,
+            'Shear Range': shear_range,
+            'MPI Range': mpi_range,
+            'RH Range': rh_range
         }
 
         # Observations / Cycles Count for each Platform
@@ -105,7 +119,7 @@ def display_summary_table(final_df, unit):
     group_starts = []
     current_top = None
 
-    raw_columns = ['Year', 'Storm', 'Total Cycles', 'Date Range', 'Lat Range', 'Lon Range', 'Intensity Range', 'MSLP Range', 'Categories'] + EXPECTED_GROUPS
+    raw_columns = ['Year', 'Storm', 'Total Cycles', 'Date Range', 'Lat Range', 'Lon Range', 'Intensity Range', 'MSLP Range', 'Categories', 'Shear Range', 'MPI Range', 'RH Range'] + EXPECTED_GROUPS
 
     final_cols = []
     for raw_col in raw_columns:
@@ -121,6 +135,11 @@ def display_summary_table(final_df, unit):
         elif raw_col == 'Intensity Range': tup = ('Basic Data', f'Intensity Range<br>({unit})')
         elif raw_col == 'MSLP Range': tup = ('Basic Data', 'MSLP Range<br>(hPa)')
         elif raw_col == 'Categories': tup = ('Basic Data', 'Categories')
+        # --- New SHIPS Parameters ---
+        elif raw_col == 'Shear Range': tup = ('SHIPS Environment', 'Shear Range<br>(kt)')
+        elif raw_col == 'MPI Range': tup = ('SHIPS Environment', 'MPI Range<br>(kt)')
+        elif raw_col == 'RH Range': tup = ('SHIPS Environment', 'Mid RH Range<br>(%)')
+        # ----------------------------
         else:
             top = 'Basic Data'
             bottom = raw_col
@@ -171,7 +190,12 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
     final_df['Storm_Display'] = final_df.apply(lambda x: f"{x['Storm']}|||{x['Constructed_File_Name']}", axis=1)
 
     base_cols = ['Year', 'Storm_Display', 'Basin', 'Cycle_Display', 'Lat', 'Lon', 'Intensity_ms', 'MSLP_hPa', 'TC_Category']
-    display_df = final_df[base_cols + EXPECTED_GROUPS].copy()
+    ships_cols = ['incv_kt', 'dtl_km', 'shrd_kt', 'shtd_deg', 'rhmd_pct', 'vmpi_kt']
+    
+    # Ensure SHIPS columns exist in the dataframe to avoid errors on older DBs
+    ships_present = [c for c in ships_cols if c in final_df.columns]
+    
+    display_df = final_df[base_cols + ships_present + EXPECTED_GROUPS].copy()
     display_df['Intensity_ms'] *= (MS_TO_KTS if unit == "knots" else 1.0)
     
     multi_cols = []
@@ -193,6 +217,14 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
         elif raw_col == 'Intensity_ms': tup = ('Basic Data', f'Intensity<br>({unit})'); fmt_map[tup] = '{:,.2f}'; numeric_cols.append(tup)
         elif raw_col == 'MSLP_hPa': tup = ('Basic Data', 'MSLP<br>(hPa)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
         elif raw_col == 'TC_Category': tup = ('Basic Data', 'Category')
+        # --- New SHIPS Parameters ---
+        elif raw_col == 'incv_kt': tup = ('SHIPS Environment', 'Int Change<br>(kt)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
+        elif raw_col == 'dtl_km': tup = ('SHIPS Environment', 'Dist to Land<br>(km)'); fmt_map[tup] = '{:,.0f}'; numeric_cols.append(tup)
+        elif raw_col == 'shrd_kt': tup = ('SHIPS Environment', 'Shear Mag<br>(kt)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
+        elif raw_col == 'shtd_deg': tup = ('SHIPS Environment', 'Shear Dir<br>(deg)'); fmt_map[tup] = '{:,.0f}'; numeric_cols.append(tup)
+        elif raw_col == 'rhmd_pct': tup = ('SHIPS Environment', 'Mid RH<br>(%)'); fmt_map[tup] = '{:,.0f}'; numeric_cols.append(tup)
+        elif raw_col == 'vmpi_kt': tup = ('SHIPS Environment', 'MPI<br>(kt)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
+        # ----------------------------
         else:
             top = 'Basic Data'
             if raw_col.startswith('dropsonde_'): top = 'Dropsondes'; bottom = raw_col.replace('dropsonde_', '').upper()

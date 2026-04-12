@@ -19,6 +19,15 @@ from config import (
 from ui_layout import CLR_MUTED, FS_BODY
 from ui_components import spacer, sidebar_label, multiselect_with_controls, section_divider, init_state, sync_namespace
 
+# --- SHIPS Parameter Definitions ---
+SHIPS_CONFIG = {
+    'incv_kt':  {'label': 'Intensity Change (kt)', 'step': 1.0},
+    'dtl_km':   {'label': 'Distance to Land (km)', 'step': 10.0},
+    'shrd_kt':  {'label': 'Shear Magnitude (kt)',  'step': 1.0},
+    'shtd_deg': {'label': 'Shear Direction (deg)', 'step': 10.0},
+    'rhmd_pct': {'label': 'Mid RH (%)',            'step': 1.0},
+    'vmpi_kt':  {'label': 'MPI (kt)',              'step': 1.0},
+}
 
 @dataclass
 class ExplorerIntent:
@@ -37,6 +46,7 @@ class ExplorerIntent:
     g_max_i_unit: float         = DEFAULT_INTENSITY_MAX
     init_min_p:   float         = DEFAULT_MSLP_MIN
     init_max_p:   float         = DEFAULT_MSLP_MAX
+    is_ships_active: bool       = False
 
 def get_dropdown_mask(df, skip_filters, has_vars):
     if isinstance(skip_filters, str): skip_filters = [skip_filters]
@@ -58,6 +68,19 @@ def get_dropdown_mask(df, skip_filters, has_vars):
         m &= ((df['Intensity_ms'] >= st.session_state.ui_int[0] * mult) & (df['Intensity_ms'] <= st.session_state.ui_int[1] * mult))
     if 'MSLP' not in skip_filters and 'ui_slp' in st.session_state:
         m &= ((df['MSLP_hPa'] >= st.session_state.ui_slp[0]) & (df['MSLP_hPa'] <= st.session_state.ui_slp[1]))
+    
+    # Apply SHIPS filters
+    if 'SHIPS' not in skip_filters:
+        inc_nan = st.session_state.get('ui_ships_inc_nan', True)
+        for col in SHIPS_CONFIG.keys():
+            state_key = f"ui_ships_{col}"
+            if state_key in st.session_state and col in df.columns:
+                vmin, vmax = st.session_state[state_key]
+                cond = (df[col] >= vmin) & (df[col] <= vmax)
+                if inc_nan:
+                    cond = cond | df[col].isna()
+                m &= cond
+                
     return m
 
 def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, raw_max_p) -> ExplorerIntent:
@@ -66,14 +89,30 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
     init_min_p = float(np.floor(raw_min_p))
     init_max_p = float(np.ceil(raw_max_p))
 
+    # Calculate global bounds for SHIPS variables
+    ships_global_bounds = {}
+    for col, config in SHIPS_CONFIG.items():
+        if col in db_df.columns:
+            cmin = float(np.floor(db_df[col].min())) if not db_df[col].isna().all() else 0.0
+            cmax = float(np.ceil(db_df[col].max())) if not db_df[col].isna().all() else 100.0
+            if cmin >= cmax: cmax = cmin + config['step']
+            ships_global_bounds[col] = (cmin, cmax)
+
     default_state = {
         'ui_years': [], 'ui_storms': [], 'ui_cats': [], 'ui_basins': [],
         'ui_groups': [], 'ui_vars': [],
         'ui_unit': "m/s", 'prev_unit': "m/s",
         'ui_int': (init_min_i, init_max_i),
         'ui_slp': (init_min_p, init_max_p),
+        'ui_ships_inc_nan': True,
         'ui_sort_col': 'Year', 'ui_sort_order': 'Ascending',
     }
+    
+    # Initialize state for SHIPS sliders
+    for col, bounds in ships_global_bounds.items():
+        default_state[f"ui_ships_{col}"] = bounds
+        default_state[f"_last_t_min_ships_{col}"] = bounds[0]
+        default_state[f"_last_t_max_ships_{col}"] = bounds[1]
 
     init_state('explorer_state', {})
     for k, v in default_state.items():
@@ -95,12 +134,13 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         st.session_state._last_t_max_i = float(np.ceil(raw_max_i * cur_mult))
         st.session_state._last_t_min_p = init_min_p
         st.session_state._last_t_max_p = init_max_p
+        
+        st.session_state.ui_ships_inc_nan = True
+        for c, b in ships_global_bounds.items():
+            st.session_state[f"ui_ships_{c}"] = b
+            st.session_state[f"_last_t_min_ships_{c}"] = b[0]
+            st.session_state[f"_last_t_max_ships_{c}"] = b[1]
 
-    def reset_table_sort():
-        st.session_state.ui_sort_col   = 'Year'
-        st.session_state.ui_sort_order = 'Ascending'
-
-    # UPDATED TITLE LINE HERE
     st.sidebar.markdown(f"### 🌍 Explorer Filters (for {len(db_df)} Total Files)")
     
     with st.sidebar.container(border=True):
@@ -187,7 +227,8 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
     with st.sidebar.container(border=True):
         st.markdown("#### Filter Rows by Group")
         df_groups    = db_df[get_dropdown_mask(db_df, 'Groups', has_vars)]
-        avail_groups = sorted([g for g in EXPECTED_GROUPS if g in df_groups.columns and pd.to_numeric(df_groups[g], errors='coerce').fillna(0).sum() > 0])
+        # Removed sorted() to preserve the exact order defined in config.py's EXPECTED_GROUPS
+        avail_groups = [g for g in EXPECTED_GROUPS if g in df_groups.columns and pd.to_numeric(df_groups[g], errors='coerce').fillna(0).sum() > 0]
         multiselect_with_controls('Contains group:', avail_groups, 'ui_groups')
 
     with st.sidebar.container(border=True):
@@ -196,24 +237,76 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         avail_vars = (sorted(set(v.strip() for v_str in df_vars['Observation_Variables'] if isinstance(v_str, str) for v in v_str.split(',') if v.strip() and v.strip().lower() != 'nan')) if has_vars else [])
         multiselect_with_controls('Contains variable:', avail_vars, 'ui_vars')
 
+    # --- New SHIPS Environment Filters ---
+    with st.sidebar.container(border=True):
+        st.markdown("#### Filter Rows by SHIPS Parameter")
+        st.checkbox("Include files missing SHIPS data", key="ui_ships_inc_nan")
+        
+        slider_mask_ships = get_dropdown_mask(db_df, ['SHIPS'], has_vars)
+        slider_df_ships = db_df[slider_mask_ships]
+        
+        for col, config in SHIPS_CONFIG.items():
+            if col not in db_df.columns:
+                continue
+                
+            g_min, g_max = ships_global_bounds[col]
+            
+            t_min = float(np.floor(slider_df_ships[col].min())) if not slider_df_ships[col].isna().all() else g_min
+            t_max = float(np.ceil(slider_df_ships[col].max())) if not slider_df_ships[col].isna().all() else g_max
+            if pd.isna(t_min): t_min = g_min
+            if pd.isna(t_max): t_max = g_max
+            if t_min >= t_max: t_max = t_min + config['step']
+            
+            state_key = f"ui_ships_{col}"
+            last_t_min_key = f"_last_t_min_ships_{col}"
+            last_t_max_key = f"_last_t_max_ships_{col}"
+            
+            last_t_min = st.session_state.get(last_t_min_key, g_min)
+            last_t_max = st.session_state.get(last_t_max_key, g_max)
+            curr_val = st.session_state.get(state_key, (g_min, g_max))
+            
+            if curr_val[0] <= last_t_min + 0.1 and curr_val[1] >= last_t_max - 0.1:
+                new_val = (t_min, t_max)
+            else:
+                new_val = (max(t_min, min(curr_val[0], t_max)), max(t_min, min(curr_val[1], t_max)))
+                if new_val[0] > new_val[1]: new_val = (t_min, t_max)
+                
+            st.session_state[state_key] = new_val
+            st.session_state[last_t_min_key] = t_min
+            st.session_state[last_t_max_key] = t_max
+            
+            sidebar_label(config['label'], size='label')
+            st.slider(config['label'], min_value=g_min, max_value=g_max, step=config['step'], key=state_key, label_visibility="collapsed")
+
     st.sidebar.button("🔄 Reset All Filters", type="secondary", width="stretch", on_click=reset_all_filters)
 
     sync_namespace('ui_', 'explorer_state')
 
+    # Detect if any SHIPS filter has been intentionally altered by the user
+    is_ships_active = False
+    if not st.session_state.ui_ships_inc_nan:
+        is_ships_active = True
+    for col, g_bounds in ships_global_bounds.items():
+        curr = st.session_state.get(f"ui_ships_{col}", g_bounds)
+        if abs(curr[0] - g_bounds[0]) > 0.1 or abs(curr[1] - g_bounds[1]) > 0.1:
+            is_ships_active = True
+            break
+
     return ExplorerIntent(
-        unit       = unit,
-        years      = list(st.session_state.ui_years),
-        storms     = list(st.session_state.ui_storms),
-        cats       = list(st.session_state.ui_cats),
-        basins     = list(st.session_state.ui_basins),
-        groups     = list(st.session_state.ui_groups),
-        vars_      = list(st.session_state.ui_vars),
-        int_range  = tuple(st.session_state.ui_int),
-        slp_range  = tuple(st.session_state.ui_slp),
-        sort_col   = st.session_state.get('ui_sort_col',   'Year'),
-        sort_order = st.session_state.get('ui_sort_order', 'Ascending'),
-        g_min_i_unit = g_min_i_unit,
-        g_max_i_unit = g_max_i_unit,
-        init_min_p   = init_min_p,
-        init_max_p   = init_max_p,
+        unit            = unit,
+        years           = list(st.session_state.ui_years),
+        storms          = list(st.session_state.ui_storms),
+        cats            = list(st.session_state.ui_cats),
+        basins          = list(st.session_state.ui_basins),
+        groups          = list(st.session_state.ui_groups),
+        vars_           = list(st.session_state.ui_vars),
+        int_range       = tuple(st.session_state.ui_int),
+        slp_range       = tuple(st.session_state.ui_slp),
+        sort_col        = st.session_state.get('ui_sort_col',   'Year'),
+        sort_order      = st.session_state.get('ui_sort_order', 'Ascending'),
+        g_min_i_unit    = g_min_i_unit,
+        g_max_i_unit    = g_max_i_unit,
+        init_min_p      = init_min_p,
+        init_max_p      = init_max_p,
+        is_ships_active = is_ships_active
     )

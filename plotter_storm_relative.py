@@ -30,7 +30,7 @@ class StormRelativeMixin:
 
     def _rotate_vectors_to_storm_motion(self, u, v, heading_deg):
         """
-        Rotates U and V wind components so that 'Up' aligns with the storm's heading.
+        Rotates U and V wind components so that 'Up' aligns with the provided heading.
         """
         theta = np.radians(heading_deg)
         u_rot = u * np.cos(theta) - v * np.sin(theta)
@@ -88,7 +88,14 @@ class StormRelativeMixin:
             dx_tr       = EARTH_R_KM * np.radians(dlon_tr) * np.cos(mean_lat_tr)
             headings    = np.degrees(np.arctan2(dx_tr, dy_tr)) % 360
             mean_heading = float(np.nanmedian(headings))
+        elif up_convention == "Relative to 850-200 hPa Shear":
+            if 'ships_params' in self.data and 'shtd_deg' in self.data['ships_params'].columns:
+                mean_heading = float(self.data['ships_params']['shtd_deg'].iloc[0])
+        elif up_convention == "Relative to Vortex-Removed Shear":
+            if 'ships_params' in self.data and 'sddc_deg' in self.data['ships_params'].columns:
+                mean_heading = float(self.data['ships_params']['sddc_deg'].iloc[0])
 
+        if mean_heading is not None and up_convention != "Relative to North":
             theta_rad = np.radians(mean_heading)
             x_rot     = x_km * np.cos(theta_rad) - y_km * np.sin(theta_rad)
             y_rot     = x_km * np.sin(theta_rad) + y_km * np.cos(theta_rad)
@@ -127,8 +134,8 @@ class StormRelativeMixin:
                             up_convention="Relative to North",
                             thinning_pct=None, marker_size_pct=100,
                             vec_scale=1.0, time_bounds=None, color_scale="Linear scale",
-                            show_center=True, cen_mode="Display Location Only",
-                            custom_colorscale=None):
+                            show_center=True, cen_mode="Plot Center Location",
+                            cen_vector_dir="North", custom_colorscale=None):
                             
         if group_name not in self.data:
             return None, None
@@ -301,16 +308,13 @@ class StormRelativeMixin:
         t_vals = plot_df[time_col].values
         hover_text = [make_sr_hover(r, a, v, t, z) for r, a, v, t, z in zip(range_km, azimuth_deg, plot_df[variable].values, t_vals, z_vals_hover)]
 
-        # =========================================================================
-        # REFACTORED PLOTTING BLOCK
-        # =========================================================================
         is_vector = variable.lower() in ['wind_vec_hz', 'wind_vec_3d']
         
         if is_vector and 'u' in cols_lower and 'v' in cols_lower:
             u_col, v_col = cols_lower['u'], cols_lower['v']
             u_vals, v_vals = plot_df[u_col].values, plot_df[v_col].values
             
-            if up_convention == "Relative to Storm Motion" and mean_heading is not None:
+            if up_convention != "Relative to North" and mean_heading is not None:
                 u_rot, v_rot = self._rotate_vectors_to_storm_motion(u_vals, v_vals, mean_heading)
             else:
                 u_rot, v_rot = u_vals, v_vals
@@ -347,41 +351,36 @@ class StormRelativeMixin:
                 hoverinfo='text',
                 showlegend=False
             ))
-        # =========================================================================
 
         if show_center:
-            motion_dir = None
-            if cen_mode == "Display As Motion Vector":
-                motion_str = str(self.metadata.get('info', {}).get('storm_motion', ''))
-                nums = re.findall(r'[-+]?\d*\.?\d+', motion_str)
-                if len(nums) >= 2:
-                    motion_dir = float(nums[1])
+            vector_dir = None
+            if cen_mode == "Plot Center Vector":
+                if cen_vector_dir == "North":
+                    vector_dir = 0.0
+                elif cen_vector_dir == "Storm Motion":
+                    motion_str = str(self.metadata.get('info', {}).get('storm_motion', ''))
+                    nums = re.findall(r'[-+]?\d*\.?\d+', motion_str)
+                    if len(nums) >= 2:
+                        vector_dir = float(nums[1])
+                    else:
+                        st.toast("⚠️ Could not parse storm direction for vector. Falling back to X.", icon="⚠️")
+                elif cen_vector_dir == "850-200 hPa Shear":
+                    if 'ships_params' in self.data and 'shtd_deg' in self.data['ships_params'].columns:
+                        vector_dir = float(self.data['ships_params']['shtd_deg'].iloc[0])
+                elif cen_vector_dir == "Vortex-Removed Shear":
+                    if 'ships_params' in self.data and 'sddc_deg' in self.data['ships_params'].columns:
+                        vector_dir = float(self.data['ships_params']['sddc_deg'].iloc[0])
 
-            if motion_dir is not None:
-                dir_rad = math.radians(motion_dir)
-                dx      = math.sin(dir_rad)
-                dy      = math.cos(dir_rad)
-
-                if up_convention == "Relative to Storm Motion":
-                    track_df   = self.data[sr_track_grp]
-                    tc         = {c.lower(): c for c in track_df.columns}
-                    t_col_tr   = tc.get('time')
-                    la_col     = next((tc[c] for c in ['lat', 'latitude']  if c in tc), None)
-                    lo_col     = next((tc[c] for c in ['lon', 'longitude'] if c in tc), None)
-                    if all([t_col_tr, la_col, lo_col]):
-                        tr = track_df[[t_col_tr, la_col, lo_col]].dropna().sort_values(t_col_tr)
-                        if len(tr) >= 2:
-                            dlat_tr     = np.diff(tr[la_col].values)
-                            dlon_tr     = np.diff(tr[lo_col].values)
-                            mean_lat_tr = np.radians(tr[la_col].values[:-1])
-                            dx_tr       = EARTH_R_KM * np.radians(dlon_tr) * np.cos(mean_lat_tr)
-                            dy_tr       = EARTH_R_KM * np.radians(dlat_tr)
-                            headings    = (np.degrees(np.arctan2(dx_tr, dy_tr))) % 360
-                            mean_heading = float(np.nanmedian(headings))
-                            rotated_dir  = motion_dir - mean_heading
-                            rot_rad      = math.radians(rotated_dir)
-                            dx           = math.sin(rot_rad)
-                            dy           = math.cos(rot_rad)
+            if vector_dir is not None:
+                # Rotate the arrow based on our new up_convention
+                if up_convention != "Relative to North" and mean_heading is not None:
+                    rotated_dir = vector_dir - mean_heading
+                else:
+                    rotated_dir = vector_dir
+                    
+                rot_rad = math.radians(rotated_dir)
+                dx      = math.sin(rot_rad)
+                dy      = math.cos(rot_rad)
 
                 arrow_len  = max_range * 0.12
                 tip_x      = dx * arrow_len
@@ -413,7 +412,28 @@ class StormRelativeMixin:
                     hovertext=['Storm center']
                 ))
 
-        up_label     = "North" if up_convention == "Relative to North" else "Storm Motion"
+        # Dynamic Axis Titles Based on Convention
+        if up_convention == "Relative to North":
+            up_label = "North"
+            x_ax_title = "East–West Distance from Center (km)"
+            y_ax_title = "North–South Distance from Center (km)"
+        elif up_convention == "Relative to Storm Motion":
+            up_label = "Storm Motion"
+            x_ax_title = "Cross-Track Distance from Center (km)"
+            y_ax_title = "Along-Track Distance from Center (km)"
+        elif up_convention == "Relative to 850-200 hPa Shear":
+            up_label = "850-200 hPa Shear"
+            x_ax_title = "Cross-Shear Distance from Center (km)"
+            y_ax_title = "Along-Shear Distance from Center (km)"
+        elif up_convention == "Relative to Vortex-Removed Shear":
+            up_label = "Vortex-Removed Shear"
+            x_ax_title = "Cross-Shear Distance from Center (km)"
+            y_ax_title = "Along-Shear Distance from Center (km)"
+        else:
+            up_label = up_convention
+            x_ax_title = "Cross-Track Distance from Center (km)"
+            y_ax_title = "Along-Track Distance from Center (km)"
+
         nice_title   = self._format_title(group_name, variable,
                                           f"Storm-Relative | Up: {up_label}")
         _MT          = self._title_top_margin(nice_title)
@@ -430,11 +450,7 @@ class StormRelativeMixin:
             autosize=False,
             showlegend=False,
             xaxis=dict(
-                title=(
-                    "Cross-Track Distance from Center (km)"
-                    if up_convention == "Relative to Storm Motion"
-                    else "East–West Distance from Center (km)"
-                ),
+                title=x_ax_title,
                 tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
                 range=[-axis_lim, axis_lim],
                 dtick=ring_spacing, tick0=0,
@@ -443,11 +459,7 @@ class StormRelativeMixin:
                 constrain='domain', scaleanchor='y', scaleratio=1,
             ),
             yaxis=dict(
-                title=(
-                    "Along-Track Distance from Center (km)"
-                    if up_convention == "Relative to Storm Motion"
-                    else "North–South Distance from Center (km)"
-                ),
+                title=y_ax_title,
                 tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
                 range=[-axis_lim, axis_lim],
                 dtick=ring_spacing, tick0=0,

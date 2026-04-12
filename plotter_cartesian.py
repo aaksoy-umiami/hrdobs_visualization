@@ -33,7 +33,7 @@ class CartesianMixin:
     def plot(self, group_name, variable, z_con, domain_bounds, show_center,
              is_3d=False, z_col=None, thinning_pct=None, marker_size_pct=100,
              time_bounds=None, z_ratio=0.3, vec_scale=1.0, show_basemap=False,
-             cen_mode="Display Location Only", color_scale="Linear scale", custom_colorscale=None):
+             cen_mode="Plot Center Location", cen_vector_dir="North", color_scale="Linear scale", custom_colorscale=None):
              
         if group_name not in self.data:
             return None, None
@@ -166,13 +166,22 @@ class CartesianMixin:
             use_3d     = is_3d and (z_vals is not None)
 
             motion_dir = None
-            if cen_mode == "Display As Motion Vector":
-                motion_str = str(self.metadata.get('info', {}).get('storm_motion', ''))
-                nums = re.findall(r'[-+]?\d*\.?\d+', motion_str)
-                if len(nums) >= 2:
-                    motion_dir = float(nums[1])
-                else:
-                    st.toast("⚠️ Could not parse storm direction for vector. Falling back to X.", icon="⚠️")
+            if cen_mode == "Plot Center Vector":
+                if cen_vector_dir == "North":
+                    motion_dir = 0.0
+                elif cen_vector_dir == "Storm Motion":
+                    motion_str = str(self.metadata.get('info', {}).get('storm_motion', ''))
+                    nums = re.findall(r'[-+]?\d*\.?\d+', motion_str)
+                    if len(nums) >= 2:
+                        motion_dir = float(nums[1])
+                    else:
+                        st.toast("⚠️ Could not parse storm direction for vector. Falling back to X.", icon="⚠️")
+                elif cen_vector_dir == "850-200 hPa Shear":
+                    if 'ships_params' in self.data and 'shtd_deg' in self.data['ships_params'].columns:
+                        motion_dir = float(self.data['ships_params']['shtd_deg'].iloc[0])
+                elif cen_vector_dir == "Vortex-Removed Shear":
+                    if 'ships_params' in self.data and 'sddc_deg' in self.data['ships_params'].columns:
+                        motion_dir = float(self.data['ships_params']['sddc_deg'].iloc[0])
 
             if motion_dir is not None:
                 theta = math.radians(90 - motion_dir)
