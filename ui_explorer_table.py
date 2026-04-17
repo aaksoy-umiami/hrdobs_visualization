@@ -119,7 +119,7 @@ def display_summary_table(final_df, unit):
     group_starts = []
     current_top = None
 
-    raw_columns = ['Year', 'Storm', 'Total Cycles', 'Date Range', 'Lat Range', 'Lon Range', 'Intensity Range', 'MSLP Range', 'Categories', 'Shear Range', 'MPI Range', 'RH Range'] + EXPECTED_GROUPS
+    raw_columns = ['Year', 'Storm', 'Total Cycles', 'Date Range', 'Lat Range', 'Lon Range', 'Intensity Range', 'MSLP Range', 'Categories', 'Shear Range', 'MPI Range', 'RH Range'] + [g for g in EXPECTED_GROUPS if g != 'ships_params']
 
     final_cols = []
     for raw_col in raw_columns:
@@ -195,7 +195,8 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
     # Ensure SHIPS columns exist in the dataframe to avoid errors on older DBs
     ships_present = [c for c in ships_cols if c in final_df.columns]
     
-    display_df = final_df[base_cols + ships_present + EXPECTED_GROUPS].copy()
+    obs_groups = [g for g in EXPECTED_GROUPS if g != 'ships_params']
+    display_df = final_df[base_cols + ships_present + obs_groups].copy()
     display_df['Intensity_ms'] *= (MS_TO_KTS if unit == "knots" else 1.0)
     
     multi_cols = []
@@ -227,6 +228,7 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
         # ----------------------------
         else:
             top = 'Basic Data'
+            bottom = raw_col  # Defensive default — prevents stale variable from a prior iteration
             if raw_col.startswith('dropsonde_'): top = 'Dropsondes'; bottom = raw_col.replace('dropsonde_', '').upper()
             elif raw_col.startswith('flight_level_hdobs_'): top = 'Flight Level'; bottom = raw_col.replace('flight_level_hdobs_', '').upper()
             elif raw_col.startswith('sfmr_'): top = 'SFMR'; bottom = raw_col.replace('sfmr_', '').upper()
