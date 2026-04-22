@@ -27,7 +27,7 @@ class ViewerIntent:
     color_scale:      str             = "Linear scale"
     custom_colorscale:Optional[str]   = None
     show_cen:         bool            = True
-    cen_mode:         str             = "Display Location Only"
+    cen_mode:         str             = "Location Marker"
     apply_thinning:   bool            = False
     thin_pct:         int             = 50
     z_con:            Optional[Dict]  = None
@@ -73,7 +73,9 @@ def _extract_strict_bound(data_pack, key):
     return None
 
 def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian"):
-    available_groups = sorted(list(data_pack['data'].keys()))
+    # --- Filter out scalar SHIPS parameters from plottable groups ---
+    available_groups = sorted([g for g in data_pack['data'].keys() if g.lower() != 'ships_params'])
+    
     init_state('v_sel_group', available_groups[0] if available_groups else None)
 
     if st.session_state.v_sel_group not in available_groups:
@@ -255,23 +257,21 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
             sr_track_grp = None
 
         has_valid_motion = False
-        sm_raw = data_pack.get('meta', {}).get('info', {}).get('storm_motion')
-        if sm_raw is not None:
+        sm_heading = data_pack.get('meta', {}).get('info', {}).get('storm_motion_heading_deg')
+        
+        if sm_heading is not None:
             try:
-                if isinstance(sm_raw, (list, tuple)):
-                    sm_dir = float(sm_raw[0])
-                else:
-                    sm_dir = float(sm_raw)
+                # Safely parse the value in case it's a raw byte string like b'290.0'
+                sm_dir = float(str(sm_heading).strip("[]b'\" "))
                 if not math.isnan(sm_dir):
                     has_valid_motion = True
             except (ValueError, TypeError):
                 pass
 
-        sr_up_options = ["Relative to North"]
+        sr_up_options = ["North"]
         if has_valid_motion:
-            sr_up_options.append("Relative to Storm Motion")
+            sr_up_options.append("Storm Motion")
             
-        # --- NEW: Check for SHIPS Shear Data ---
         if 'ships_params' in data_pack.get('data', {}):
             ships_df = data_pack['data']['ships_params']
             
@@ -280,20 +280,19 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
                 mag = ships_df['shrd_kt'].iloc[0]
                 dr  = ships_df['shtd_deg'].iloc[0]
                 if pd.notna(mag) and pd.notna(dr):
-                    sr_up_options.append("Relative to 850-200 hPa Shear")
+                    sr_up_options.append("850-200 hPa Shear")
                     
             # Vortex-Removed Shear
             if 'shdc_kt' in ships_df.columns and 'sddc_deg' in ships_df.columns:
                 mag = ships_df['shdc_kt'].iloc[0]
                 dr  = ships_df['sddc_deg'].iloc[0]
                 if pd.notna(mag) and pd.notna(dr):
-                    sr_up_options.append("Relative to Vortex-Removed Shear")
-        # ---------------------------------------
+                    sr_up_options.append("Vortex-Removed 850-200 hPa Shear")
 
-        init_state('v_sr_up', "Relative to North")
+        init_state('v_sr_up', "North")
 
         if st.session_state.v_sr_up not in sr_up_options:
-            st.session_state.v_sr_up = "Relative to North"
+            st.session_state.v_sr_up = "North"
 
         if is_sr:
             sub_c1, sub_c2 = st.columns([1.1, 1.3])
@@ -303,24 +302,23 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
         else:
             sr_up_convention = st.session_state.get('v_sr_up', "Relative to North")
 
-        cen_mode_options = ["Plot Center Location", "Plot Center Vector"]
-        # Generate the vector options directly from the 'Up' convention options
-        vector_dir_options = [opt.replace("Relative to ", "") for opt in sr_up_options]
+        cen_mode_options = ["Location Marker", "Vector With Dir:"]
+        vector_dir_options = list(sr_up_options)
 
         init_state('v_show_cen', True)
-        init_state('v_cen_mode', "Plot Center Location")
+        init_state('v_cen_mode', "Location Marker")
         init_state('v_cen_vector_dir', "North")
         
         if st.session_state.v_cen_mode not in cen_mode_options:
-            st.session_state.v_cen_mode = "Plot Center Location"
+            st.session_state.v_cen_mode = "Location Marker"
         if st.session_state.v_cen_vector_dir not in vector_dir_options:
             st.session_state.v_cen_vector_dir = vector_dir_options[0]
 
-        c_cen1, c_cen2, c_cen3 = st.columns([1.6, 1.3, 1.3])
+        c_cen1, c_cen2, c_cen3 = st.columns([1.4, 1.4, 1.4])
         with c_cen1:
             spacer('sm')
             show_cen = st.checkbox(
-                "Nearest to Ctr Time:", 
+                "Plot center as:", 
                 key='v_show_cen', 
                 disabled=not available_tracks or is_rh
             )
@@ -337,7 +335,7 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
                 "Vector Direction", 
                 vector_dir_options, 
                 key='v_cen_vector_dir', 
-                disabled=not show_cen or cen_mode != "Plot Center Vector" or not available_tracks or is_rh, 
+                disabled=not show_cen or cen_mode != "Vector With Dir:" or not available_tracks or is_rh, 
                 label_visibility="collapsed"
             )
 
@@ -358,7 +356,21 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
             options_3d = options if options else ["None"]
             if st.session_state.get('v_3d_z') not in options_3d:
                 st.session_state.v_3d_z = options_3d[0]
-            target_col_3d = st.selectbox("Select 3D Z-Axis", options_3d, key='v_3d_z', label_visibility="collapsed", disabled=not is_3d)
+                
+            # Helper to map the raw column names to clean dropdown labels
+            def format_3d_z(x):
+                if x == h_col: return "Geopotential Height"
+                if x == p_col: return "Pressure"
+                return str(x).replace('_', ' ').title()
+
+            target_col_3d = st.selectbox(
+                "Select 3D Z-Axis", 
+                options_3d, 
+                key='v_3d_z', 
+                label_visibility="collapsed", 
+                disabled=not is_3d,
+                format_func=format_3d_z # <-- Added format_func here
+            )
 
         r1, r2 = st.columns([1.1, 2.2])
         with r1:
@@ -428,10 +440,8 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
         flight_track_grps = [g for g in available_groups if g.lower().startswith('flight_level_hdobs')]
         track_mapping     = {g.split('_')[-1].upper(): g for g in flight_track_grps}
 
-        # --- NEW LOGIC: Determine if track overlay should be disabled ---
         is_track_group = sel_group.startswith("track_")
         disable_track = is_sr or is_track_group
-        # ----------------------------------------------------------------
 
         track_col1, track_col2 = st.columns([1.1, 1])
         with track_col1:
@@ -540,7 +550,6 @@ def render_viewer_controls(plotter) -> ViewerIntent:
     intent.color_scale = color_scale
 
     _cur_is_3d = st.session_state.get('v_is_3d', False)
-    # 1. Add cen_vector_dir to the unpacked variables here:
     plot_type, sr_up_convention, sr_track_grp, is_3d, target_col_3d, z_ratio, can_do_3d, show_cen, cen_mode, cen_vector_dir = _render_plot_type_section(
         data_pack, sel_group, _cur_is_3d, h_col=h_col, p_col=p_col, plotter=plotter
     )
@@ -572,7 +581,6 @@ def render_viewer_controls(plotter) -> ViewerIntent:
 
     from ui_viewer_domain import _render_domain_section, _render_time_section
     
-    # We will grab z_con, rh_z_col, and plot_z_col from the domain section now!
     (domain_bounds, convert_dom, vert_range, domain_z_col, rh_z_col, z_con, plot_z_col) = _render_domain_section(
          data_pack, sel_group, df_sel, options=[c for c in [h_col, p_col] if c], 
          target_col_3d=target_col_3d, is_3d=is_3d,

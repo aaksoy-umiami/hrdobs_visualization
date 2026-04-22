@@ -134,7 +134,7 @@ def display_summary_table(final_df, unit):
         elif raw_col == 'Lon Range': tup = ('Basic Data', 'Lon Range<br>°W')
         elif raw_col == 'Intensity Range': tup = ('Basic Data', f'Intensity Range<br>({unit})')
         elif raw_col == 'MSLP Range': tup = ('Basic Data', 'MSLP Range<br>(hPa)')
-        elif raw_col == 'Categories': tup = ('Basic Data', 'Categories')
+        elif raw_col == 'Categories': tup = ('Basic Data', 'Intensity Categories')
         # --- New SHIPS Parameters ---
         elif raw_col == 'Shear Range': tup = ('SHIPS Environment', 'Shear Range<br>(kt)')
         elif raw_col == 'MPI Range': tup = ('SHIPS Environment', 'MPI Range<br>(kt)')
@@ -217,7 +217,7 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
         elif raw_col == 'Lon': tup = ('Basic Data', 'Lon<br>°W'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
         elif raw_col == 'Intensity_ms': tup = ('Basic Data', f'Intensity<br>({unit})'); fmt_map[tup] = '{:,.2f}'; numeric_cols.append(tup)
         elif raw_col == 'MSLP_hPa': tup = ('Basic Data', 'MSLP<br>(hPa)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
-        elif raw_col == 'TC_Category': tup = ('Basic Data', 'Category')
+        elif raw_col == 'TC_Category': tup = ('Basic Data', 'Intensity Category')
         # --- New SHIPS Parameters ---
         elif raw_col == 'incv_kt': tup = ('SHIPS Environment', 'Int Change<br>(kt)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
         elif raw_col == 'dtl_km': tup = ('SHIPS Environment', 'Dist to Land<br>(km)'); fmt_map[tup] = '{:,.0f}'; numeric_cols.append(tup)

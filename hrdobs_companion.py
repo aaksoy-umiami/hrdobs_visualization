@@ -65,12 +65,12 @@ with tab_col1:
         st.rerun()
 
 with tab_col2:
-    if st.button("📊 Single File Plotter", type="primary" if st.session_state.selected_tab_index == 1 else "secondary", width="stretch"):
+    if st.button("📊 Individual File Plotter", type="primary" if st.session_state.selected_tab_index == 1 else "secondary", width="stretch"):
         st.session_state.selected_tab_index = 1
         st.rerun()
 
 with tab_col3:
-    if st.button("📈 Single File Statistical Analysis", type="primary" if st.session_state.selected_tab_index == 2 else "secondary", width="stretch"):
+    if st.button("📈 Individual File Statistical Analysis", type="primary" if st.session_state.selected_tab_index == 2 else "secondary", width="stretch"):
         st.session_state.selected_tab_index = 2
         st.rerun()
 

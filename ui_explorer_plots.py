@@ -117,7 +117,7 @@ def _build_category_map(map_df: pd.DataFrame, unit: str) -> go.Figure:
                    zeroline=False, dtick=10, showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
                    scaleanchor='x', scaleratio=1, constrain='domain', tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY)),
         legend=dict(
-            title=dict(text='Category'), 
+            title=dict(text='Intensity Category'), 
             yanchor="middle", y=0.5,      # Centers the legend vertically
             xanchor="left", x=1.02,       # Places the legend just outside the right edge of the plot
             bgcolor="rgba(255, 255, 255, 0.85)", 
@@ -145,7 +145,7 @@ def _build_category_histogram(plot_df: pd.DataFrame) -> go.Figure:
     ])
     
     fig_hist.update_layout(
-        title={'text': "Cycles by Category", 'x': 0.5, 'xanchor': 'center', 'xref': 'paper'},
+        title={'text': "Cycles by Intensity Category", 'x': 0.5, 'xanchor': 'center', 'xref': 'paper'},
         margin=PLOT_MARGINS_SUMMARY, paper_bgcolor=CLR_PLOT_BG, plot_bgcolor=CLR_PLOT_BG, height=PLOT_HEIGHT_SUMMARY,
         xaxis=dict(title='', tickangle=-45, showgrid=False, showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
                    tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY), fixedrange=True, automargin=False),

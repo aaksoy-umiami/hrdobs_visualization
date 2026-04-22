@@ -14,7 +14,8 @@ from typing import List, Tuple, Optional
 from config import (
     EXPECTED_GROUPS, MS_TO_KTS, 
     DEFAULT_INTENSITY_MIN, DEFAULT_INTENSITY_MAX, 
-    DEFAULT_MSLP_MIN, DEFAULT_MSLP_MAX
+    DEFAULT_MSLP_MIN, DEFAULT_MSLP_MAX,
+    GLOBAL_VAR_CONFIG, SHIPS_PREDICTOR_META
 )
 from ui_layout import CLR_MUTED, FS_BODY
 from ui_components import spacer, sidebar_label, multiselect_with_controls, section_divider, init_state, sync_namespace
@@ -101,8 +102,8 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
     default_state = {
         'ui_years': [], 'ui_storms': [], 'ui_cats': [], 'ui_basins': [],
         'ui_groups': [], 'ui_vars': [],
-        'ui_unit': "m/s", 'prev_unit': "m/s",
-        'ui_int': (init_min_i, init_max_i),
+        'ui_unit': "knots", 'prev_unit': "knots",
+        'ui_int': (float(np.floor(raw_min_i * MS_TO_KTS)), float(np.ceil(raw_max_i * MS_TO_KTS))), # <-- Apply knot conversion
         'ui_slp': (init_min_p, init_max_p),
         'ui_ships_inc_nan': True,
         'ui_sort_col': 'Year', 'ui_sort_order': 'Ascending',
@@ -141,7 +142,7 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
             st.session_state[f"_last_t_min_ships_{c}"] = b[0]
             st.session_state[f"_last_t_max_ships_{c}"] = b[1]
 
-    st.sidebar.markdown(f"### 🌍 Explorer Filters (for {len(db_df)} Total Files)")
+    st.sidebar.markdown(f"### 🌍 Apply Filters Below to List Matching Files")
     
     with st.sidebar.container(border=True):
         st.markdown("#### Filter by Storm Information")
@@ -149,17 +150,23 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         filter_mappings = [
             ("Year",        "ui_years",  "Year",        "Year"),
             ("Name",        "ui_storms", "Storm",       "Storm"),
-            ("Category",    "ui_cats",   "TC_Category", "TC_Category"),
             ("Storm Basin", "ui_basins", "Basin",       "Basin"),
         ]
+        
         for label, key, col, skip_arg in filter_mappings:
             avail = sorted(db_df[get_dropdown_mask(db_df, skip_arg, has_vars)][col].dropna().unique())
             multiselect_with_controls(label, avail, key)
             section_divider()
 
-        col_label, col_radio = st.columns([0.6, 1])
+        # --- INTENSITY & MSLP GROUPING (No separators) ---
+        avail_cats = sorted(db_df[get_dropdown_mask(db_df, "TC_Category", has_vars)]["TC_Category"].dropna().unique())
+        multiselect_with_controls("Intensity Category", avail_cats, "ui_cats")
+        
+        spacer('sm')
+
+        col_label, col_radio = st.columns([0.35, 1.25])
         with col_label: sidebar_label('Intensity', size='label')
-        with col_radio: unit = st.radio("Unit", ["m/s", "knots"], key="ui_unit", label_visibility="collapsed", horizontal=True)
+        with col_radio: unit = st.radio("Unit", ["knots", "m/s"], key="ui_unit", label_visibility="collapsed", horizontal=True)
 
         mult             = MS_TO_KTS if unit == "knots" else 1.0
         g_min_i_unit     = float(np.floor(raw_min_i * mult))
@@ -225,17 +232,100 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         st.slider("MSLP", min_value=init_min_p, max_value=init_max_p, step=1.0, key="ui_slp", label_visibility="collapsed")
 
     with st.sidebar.container(border=True):
-        st.markdown("#### Filter Rows by Group")
+        st.markdown("#### Filter Rows by Aircraft/Platform/Track/Variable")
+        
         df_groups    = db_df[get_dropdown_mask(db_df, 'Groups', has_vars)]
         # Removed sorted() to preserve the exact order defined in config.py's EXPECTED_GROUPS
         avail_groups = [g for g in EXPECTED_GROUPS if g in df_groups.columns and pd.to_numeric(df_groups[g], errors='coerce').fillna(0).sum() > 0]
-        multiselect_with_controls('Contains group:', avail_groups, 'ui_groups')
+        multiselect_with_controls('Contains aircraft/platform/track group:', avail_groups, 'ui_groups')
 
-    with st.sidebar.container(border=True):
-        st.markdown("#### Filter Rows by Variable")
+        section_divider()
+
         df_vars    = db_df[get_dropdown_mask(db_df, 'Vars', has_vars)]
         avail_vars = (sorted(set(v.strip() for v_str in df_vars['Observation_Variables'] if isinstance(v_str, str) for v in v_str.split(',') if v.strip() and v.strip().lower() != 'nan')) if has_vars else [])
-        multiselect_with_controls('Contains variable:', avail_vars, 'ui_vars')
+
+        # --- SMART VARIABLE FILTERING (Cumulative Mask) ---
+        active_groups = st.session_state.get('ui_groups', [])
+        if active_groups:
+            allowed_vars = set()
+            ships_vars = list(SHIPS_CONFIG.keys()) # <-- Now uses your existing global import!
+            track_vars = ['lat', 'latitude', 'clat', 'lon', 'longitude', 'clon', 'time', 'vmax', 'pmin', 'rmw']
+            
+            # Map specific keywords in your group names to their respective variables
+            instrument_mappings = {
+                'sfmr': ['SFC_WSPD', 'RAIN_RATE', 'lat', 'lon', 'time'],
+                'tdr': ['DBZ', 'VR', 'w', 'u', 'v', 'lat', 'lon', 'time', 'altitude', 'height', 'dz', 'vt'],
+                'flight_level': ['T', 'Td', 'wspd', 'wdir', 'u', 'v', 'p', 'height', 'lat', 'lon', 'time', 'w', 'hwspd', 'theta', 'theta_e'],
+                'dropsonde': ['T', 'RH', 'wspd', 'wdir', 'u', 'v', 'p', 'height', 'altitude', 'ght', 'lat', 'lon', 'time', 'vt', 'mr', 'theta', 'theta_e', 'sfcp', 'elev'],
+                'axbt': ['SST', 'T', 'depth', 'lat', 'lon', 'time']
+            }
+            
+            for g in active_groups:
+                g_lower = g.lower()
+                if g_lower == 'ships_params':
+                    allowed_vars.update(ships_vars)
+                elif g_lower.startswith('track_'):
+                    allowed_vars.update(track_vars)
+                else:
+                    # Check if the group name contains an instrument keyword (e.g., 'dropsonde_ghawk' contains 'dropsonde')
+                    matched = False
+                    for inst, ivars in instrument_mappings.items():
+                        if inst in g_lower:
+                            # Add both the exact cases and lowercase versions to be safe
+                            allowed_vars.update(ivars)
+                            allowed_vars.update([iv.lower() for iv in ivars])
+                            matched = True
+                    
+                    # Fallback: if we have an unmapped group, add all remaining non-derived vars just in case
+                    if not matched:
+                        obs_vars = [k for k, v in GLOBAL_VAR_CONFIG.items() if not v.get('is_derived', False) and k not in track_vars]
+                        allowed_vars.update(obs_vars)
+                        allowed_vars.update(['lat', 'latitude', 'lon', 'longitude', 'time', 'p', 'height', 'altitude'])
+
+            # Intersect available variables with the cumulative allowed list (case-insensitive check)
+            avail_vars = [v for v in avail_vars if v in allowed_vars or v.lower() in allowed_vars or v.upper() in allowed_vars]
+        # --------------------------------------------------
+
+        # --- VARIABLE DISPLAY FORMATTER ---
+        # 1. Start with an empty map
+        var_display_map = {}
+
+        # 2. Add standard variables from config.py
+        for k, v in GLOBAL_VAR_CONFIG.items():
+            var_display_map[k] = v.get('display_name', k)
+
+        # 3. Add SHIPS parameters from SHIPS_PREDICTOR_META
+        # This unpacks the (unit, description) tuple automatically
+        for k, (unit, desc) in SHIPS_PREDICTOR_META.items():
+            var_display_map[k] = f"{desc} ({unit})"
+
+        # 4. Update with track/coordinate variables
+        var_display_map.update({
+            'lat': 'Latitude (deg)', 'latitude': 'Latitude (deg)', 
+            'clat': 'Center Latitude (deg)', 'lon': 'Longitude (deg)', 
+            'longitude': 'Longitude (deg)', 'clon': 'Center Longitude (deg)',
+            'time': 'Time (UTC)', 'altitude': 'Altitude (m)', 
+            'height': 'Height (m)', 'p': 'Pressure (hPa)',
+            'pmin': 'Minimum Pressure (hPa)', 
+            'vmax': 'Maximum Wind Speed (m/s)', 
+            'rmw': 'Radius of Max Winds (km)'
+        })
+
+        def format_var_name(short_name):
+            # Check for exact case, then upper/lower case fallbacks
+            long_name = var_display_map.get(
+                short_name, 
+                var_display_map.get(short_name.upper(), 
+                                   var_display_map.get(short_name.lower(), short_name))
+            )
+            # Display format: "Description (Unit) (short_name)"
+            if long_name != short_name:
+                return f"{long_name} ({short_name})"
+            return short_name
+        # ----------------------------------
+
+        # Pass the format_func into the updated wrapper!
+        multiselect_with_controls('Contains variable:', avail_vars, 'ui_vars', format_func=format_var_name)
 
     # --- New SHIPS Environment Filters ---
     with st.sidebar.container(border=True):

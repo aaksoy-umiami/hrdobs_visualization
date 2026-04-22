@@ -47,7 +47,11 @@ _ANALYSIS_STATE_KEYS = [
 ]
 
 def _render_analysis_variable_section(data_pack, plotter, analysis_type):
-    available_groups = sorted(list(data_pack['data'].keys()))
+    # --- Filter out scalar SHIPS parameters from analyzable groups ---
+    available_groups = sorted([
+        g for g in data_pack['data'].keys() 
+        if g.lower() != 'ships_params' and 'track' not in g.lower()
+    ])
     
     init_state('a_sel_group', available_groups[0] if available_groups else None)
     if st.session_state.a_sel_group not in available_groups:
@@ -73,141 +77,138 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
         reverse_axes = False
         ordered = []
         
-        if 'TRACK' in sel_group.upper():
-            st.info("Statistical analysis not available for flight tracks.")
-        else:
-            is_scatter = (analysis_type == "Scatter Analysis")
-            is_1d_hist = (analysis_type == "Histogram Analysis (1D)")
-            is_2d_hist = (analysis_type == "Histogram Analysis (2D)")
+        is_scatter = (analysis_type == "Scatter Analysis")
+        is_1d_hist = (analysis_type == "Histogram Analysis (1D)")
+        is_2d_hist = (analysis_type == "Histogram Analysis (2D)")
 
-            label_1 = "First Variable" if is_scatter else ("Primary Variable" if is_2d_hist else "Variable")
-            label_2 = "Second Variable" if is_scatter else ("Secondary Variable" if is_2d_hist else "Coordinate Variable")
+        label_1 = "First Variable" if is_scatter else ("Primary Variable" if is_2d_hist else "Variable")
+        label_2 = "Second Variable" if is_scatter else ("Secondary Variable" if is_2d_hist else "Coordinate Variable")
 
-            base_vars  = plotter.get_plottable_variables(sel_group, exclude_vectors=True)
-            coord_vars = plotter.get_coordinate_variables(sel_group)
-            extra_coords = [c for c in coord_vars if c not in base_vars]
-            
-            combined_vars = base_vars + extra_coords
-            
-            # =================================================================
-            # STRICT AZIMUTH VALIDATION (Checks for BOTH Speed and Direction)
-            # =================================================================
-            valid_azimuths = ['azimuth_north']
-            
-            # 1. Storm Motion (Extract numbers to verify vector completeness)
-            sm_raw = data_pack.get('meta', {}).get('info', {}).get('storm_motion')
-            if sm_raw is not None:
-                nums = re.findall(r'[-+]?\d*\.?\d+', str(sm_raw))
-                if len(nums) >= 2:  # Must have at least two numerical values
-                    valid_azimuths.append('azimuth_motion')
-                    
-            # 2. SHIPS Shear Vectors
-            if 'ships_params' in data_pack.get('data', {}):
-                ships_df = data_pack['data']['ships_params']
-                # Deep Layer
-                if 'shrd_kt' in ships_df.columns and 'shtd_deg' in ships_df.columns:
-                    if pd.notna(ships_df['shrd_kt'].iloc[0]) and pd.notna(ships_df['shtd_deg'].iloc[0]):
-                        valid_azimuths.append('azimuth_shear_deep')
-                # Vortex Removed
-                if 'shdc_kt' in ships_df.columns and 'sddc_deg' in ships_df.columns:
-                    if pd.notna(ships_df['shdc_kt'].iloc[0]) and pd.notna(ships_df['sddc_deg'].iloc[0]):
-                        valid_azimuths.append('azimuth_shear_vortex')
-
-            # --- THE FIX: Force inject valid azimuths so the UI sees them ---
-            for az in valid_azimuths:
-                if az not in combined_vars:
-                    combined_vars.append(az)
-            # ----------------------------------------------------------------
-
-            # NOW sort them, after we've guaranteed the valid azimuths are inside
-            ordered_raw   = plotter.sort_variables(combined_vars, sel_group)
-
-            # Filter the ordered lists so invalid azimuths NEVER appear in the dropdowns
-            ordered = [v for v in ordered_raw if not (v.lower().startswith('azimuth_') and v.lower() not in valid_azimuths)]
-            
-            list_1 = ordered
-            if (is_scatter or is_2d_hist):
-                list_2 = ordered
-            else:
-                coord_list_raw = plotter.get_coordinate_variables(sel_group)
-                list_2 = [v for v in coord_list_raw if not (v.lower().startswith('azimuth_') and v.lower() not in valid_azimuths)]
-            # =================================================================
-
-            v1_state = st.session_state.get('a_variable', list_1[0] if list_1 else "")
-            v2_state = st.session_state.get('a_coord_var', list_2[0] if list_2 else "")
-            v1_lower = v1_state.lower() if v1_state else ""
-            v2_lower = v2_state.lower() if v2_state else ""
-            
-            # Dynamically check if any selected variable is an azimuth
-            has_az   = any(v.startswith("azimuth_") for v in [v1_lower, v2_lower])
-            has_dist = "dist_from_center" in [v1_lower, v2_lower]
-            is_polar_eligible = has_az and has_dist and not is_1d_hist
-            is_polar = is_polar_eligible and st.session_state.get('a_coord_sys') == "Polar"
-
-            if list_1:
-                init_state('a_variable', list_1[0])
-                if st.session_state.a_variable not in list_1:
-                    st.session_state.a_variable = list_1[0]
-
-                v1_col1, v1_col2 = st.columns([1.6, 1])
-                with v1_col1:
-                    variable = st.selectbox(label_1, list_1, key='a_variable', on_change=reset_a_var_dependencies, format_func=lambda x: plotter._get_var_display_name(sel_group, x))
-                with v1_col2:
-                    init_state('a_scale_var', "Linear scale")
-                    if is_polar and st.session_state.a_scale_var != "Linear scale":
-                        st.session_state.a_scale_var = "Linear scale"
-                    st.selectbox("Plot on:", ["Linear scale", "Log scale"], key='a_scale_var', disabled=is_polar)
-            else:
-                st.warning("No valid variables found.")
-
-            if list_2:
-                init_state('a_coord_var', list_2[0])
-                if st.session_state.a_coord_var not in list_2:
-                    st.session_state.a_coord_var = list_2[0]
-
-                v2_col1, v2_col2 = st.columns([1.6, 1])
-                with v2_col1:
-                    coord_var = st.selectbox(label_2, list_2, key='a_coord_var', format_func=lambda x: plotter._get_var_display_name(sel_group, x), disabled=is_1d_hist)
-                with v2_col2:
-                    init_state('a_scale_coord_var', "Linear scale")
-                    if is_polar and st.session_state.a_scale_coord_var != "Linear scale":
-                        st.session_state.a_scale_coord_var = "Linear scale"
-                    st.selectbox("Plot on:", ["Linear scale", "Log scale"], key='a_scale_coord_var', disabled=(is_1d_hist or is_polar))
+        base_vars  = plotter.get_plottable_variables(sel_group, exclude_vectors=True)
+        coord_vars = plotter.get_coordinate_variables(sel_group)
+        extra_coords = [c for c in coord_vars if c not in base_vars]
+        
+        combined_vars = base_vars + extra_coords
+        
+        # =================================================================
+        # STRICT AZIMUTH VALIDATION (Checks for BOTH Speed and Direction)
+        # =================================================================
+        valid_azimuths = ['azimuth_north']
+        
+        # 1. Storm Motion (Extract numbers to verify vector completeness)
+        sm_raw = data_pack.get('meta', {}).get('info', {}).get('storm_motion')
+        if sm_raw is not None:
+            nums = re.findall(r'[-+]?\d*\.?\d+', str(sm_raw))
+            if len(nums) >= 2:  # Must have at least two numerical values
+                valid_azimuths.append('azimuth_motion')
                 
-                init_state('a_reverse_axes', False)
-                if is_polar and st.session_state.a_reverse_axes:
-                    st.session_state.a_reverse_axes = False
-                st.checkbox("Reverse X and Y axes", key="a_reverse_axes", disabled=(is_polar or is_1d_hist))
-                reverse_axes = st.session_state.a_reverse_axes
-            else:
-                st.warning("No valid secondary variables found for this group.")
+        # 2. SHIPS Shear Vectors
+        if 'ships_params' in data_pack.get('data', {}):
+            ships_df = data_pack['data']['ships_params']
+            # Deep Layer
+            if 'shrd_kt' in ships_df.columns and 'shtd_deg' in ships_df.columns:
+                if pd.notna(ships_df['shrd_kt'].iloc[0]) and pd.notna(ships_df['shtd_deg'].iloc[0]):
+                    valid_azimuths.append('azimuth_shear_deep')
+            # Vortex Removed
+            if 'shdc_kt' in ships_df.columns and 'sddc_deg' in ships_df.columns:
+                if pd.notna(ships_df['shdc_kt'].iloc[0]) and pd.notna(ships_df['sddc_deg'].iloc[0]):
+                    valid_azimuths.append('azimuth_shear_vortex')
 
-            section_divider()
+        # --- THE FIX: Force inject valid azimuths so the UI sees them ---
+        for az in valid_azimuths:
+            if az not in combined_vars:
+                combined_vars.append(az)
+        # ----------------------------------------------------------------
+
+        # NOW sort them, after we've guaranteed the valid azimuths are inside
+        ordered_raw   = plotter.sort_variables(combined_vars, sel_group)
+
+        # Filter the ordered lists so invalid azimuths NEVER appear in the dropdowns
+        ordered = [v for v in ordered_raw if not (v.lower().startswith('azimuth_') and v.lower() not in valid_azimuths)]
+        
+        list_1 = ordered
+        if (is_scatter or is_2d_hist):
+            list_2 = ordered
+        else:
+            coord_list_raw = plotter.get_coordinate_variables(sel_group)
+            list_2 = [v for v in coord_list_raw if not (v.lower().startswith('azimuth_') and v.lower() not in valid_azimuths)]
+        # =================================================================
+
+        v1_state = st.session_state.get('a_variable', list_1[0] if list_1 else "")
+        v2_state = st.session_state.get('a_coord_var', list_2[0] if list_2 else "")
+        v1_lower = v1_state.lower() if v1_state else ""
+        v2_lower = v2_state.lower() if v2_state else ""
+        
+        # Dynamically check if any selected variable is an azimuth
+        has_az   = any(v.startswith("azimuth_") for v in [v1_lower, v2_lower])
+        has_dist = "dist_from_center" in [v1_lower, v2_lower]
+        is_polar_eligible = has_az and has_dist and not is_1d_hist
+        is_polar = is_polar_eligible and st.session_state.get('a_coord_sys') == "Polar"
+
+        if list_1:
+            init_state('a_variable', list_1[0])
+            if st.session_state.a_variable not in list_1:
+                st.session_state.a_variable = list_1[0]
+
+            v1_col1, v1_col2 = st.columns([1.6, 1])
+            with v1_col1:
+                variable = st.selectbox(label_1, list_1, key='a_variable', on_change=reset_a_var_dependencies, format_func=lambda x: plotter._get_var_display_name(sel_group, x))
+            with v1_col2:
+                init_state('a_scale_var', "Linear scale")
+                if is_polar and st.session_state.a_scale_var != "Linear scale":
+                    st.session_state.a_scale_var = "Linear scale"
+                st.selectbox("Plot on:", ["Linear scale", "Log scale"], key='a_scale_var', disabled=is_polar)
+        else:
+            st.warning("No valid variables found.")
+
+        if list_2:
+            init_state('a_coord_var', list_2[0])
+            if st.session_state.a_coord_var not in list_2:
+                st.session_state.a_coord_var = list_2[0]
+
+            v2_col1, v2_col2 = st.columns([1.6, 1])
+            with v2_col1:
+                coord_var = st.selectbox(label_2, list_2, key='a_coord_var', format_func=lambda x: plotter._get_var_display_name(sel_group, x), disabled=is_1d_hist)
+            with v2_col2:
+                init_state('a_scale_coord_var', "Linear scale")
+                if is_polar and st.session_state.a_scale_coord_var != "Linear scale":
+                    st.session_state.a_scale_coord_var = "Linear scale"
+                st.selectbox("Plot on:", ["Linear scale", "Log scale"], key='a_scale_coord_var', disabled=(is_1d_hist or is_polar))
             
-            color_opts = ["None", "Variable:"]
-            init_state('a_scatter_color', "None")
-            if st.session_state.a_scatter_color not in color_opts: st.session_state.a_scatter_color = "None"
-            scatter_color_mode = st.selectbox("Scatter Color by:", color_opts, key="a_scatter_color", disabled=not is_scatter)
+            init_state('a_reverse_axes', False)
+            if is_polar and st.session_state.a_reverse_axes:
+                st.session_state.a_reverse_axes = False
+            st.checkbox("Reverse X and Y axes", key="a_reverse_axes", disabled=(is_polar or is_1d_hist))
+            reverse_axes = st.session_state.a_reverse_axes
+        else:
+            st.warning("No valid secondary variables found for this group.")
 
-            color_by_var = (is_scatter and scatter_color_mode == "Variable:")
-            
-            def reset_scatter_color_dep():
-                if 'a_custom_colorscale' in st.session_state:
-                    del st.session_state['a_custom_colorscale']
-                if 'a_rev_cmap' in st.session_state:
-                    del st.session_state['a_rev_cmap']
-                    
-            if ordered:
-                init_state('a_scatter_color_var', ordered[0])
-                if st.session_state.a_scatter_color_var not in ordered: st.session_state.a_scatter_color_var = ordered[0]
-                st.selectbox("Color Variable", ordered, key="a_scatter_color_var", on_change=reset_scatter_color_dep, format_func=lambda x: plotter._get_var_display_name(sel_group or "", x), disabled=not color_by_var, label_visibility="collapsed")
+        section_divider()
+        
+        color_opts = ["None", "Variable:"]
+        init_state('a_scatter_color', "None")
+        if st.session_state.a_scatter_color not in color_opts: st.session_state.a_scatter_color = "None"
+        scatter_color_mode = st.selectbox("Scatter Color by:", color_opts, key="a_scatter_color", disabled=not is_scatter)
 
-            sidebar_label("Marker Size:", size='label', enabled=is_scatter)
-            init_state('a_scatter_marker_size', 100)
-            st.slider("Scatter Marker Size", min_value=10, max_value=200, step=10, format="%d%%", key="a_scatter_marker_size", disabled=not is_scatter, label_visibility="collapsed")
+        color_by_var = (is_scatter and scatter_color_mode == "Variable:")
+        
+        def reset_scatter_color_dep():
+            if 'a_custom_colorscale' in st.session_state:
+                del st.session_state['a_custom_colorscale']
+            if 'a_rev_cmap' in st.session_state:
+                del st.session_state['a_rev_cmap']
+                
+        if ordered:
+            init_state('a_scatter_color_var', ordered[0])
+            if st.session_state.a_scatter_color_var not in ordered: st.session_state.a_scatter_color_var = ordered[0]
+            st.selectbox("Color Variable", ordered, key="a_scatter_color_var", on_change=reset_scatter_color_dep, format_func=lambda x: plotter._get_var_display_name(sel_group or "", x), disabled=not color_by_var, label_visibility="collapsed")
 
-            scatter_color_var = st.session_state.get('a_scatter_color_var') if color_by_var else None
-            scatter_marker_size = st.session_state.get('a_scatter_marker_size', 100) if is_scatter else 100
+        sidebar_label("Marker Size:", size='label', enabled=is_scatter)
+        init_state('a_scatter_marker_size', 100)
+        st.slider("Scatter Marker Size", min_value=10, max_value=200, step=10, format="%d%%", key="a_scatter_marker_size", disabled=not is_scatter, label_visibility="collapsed")
+
+        scatter_color_var = st.session_state.get('a_scatter_color_var') if color_by_var else None
+        scatter_marker_size = st.session_state.get('a_scatter_marker_size', 100) if is_scatter else 100
 
     _ordered = ordered if (not 'TRACK' in sel_group.upper() and (is_scatter or analysis_type == "Histogram Analysis (2D)")) else []
     return sel_group, variable, coord_var, scatter_color_var, scatter_marker_size, _ordered, reverse_axes

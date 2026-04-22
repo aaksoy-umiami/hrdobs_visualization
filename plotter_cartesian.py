@@ -33,7 +33,7 @@ class CartesianMixin:
     def plot(self, group_name, variable, z_con, domain_bounds, show_center,
              is_3d=False, z_col=None, thinning_pct=None, marker_size_pct=100,
              time_bounds=None, z_ratio=0.3, vec_scale=1.0, show_basemap=False,
-             cen_mode="Plot Center Location", cen_vector_dir="North", color_scale="Linear scale", custom_colorscale=None):
+             cen_mode="Location Marker", cen_vector_dir="North", color_scale="Linear scale", custom_colorscale=None):
              
         if group_name not in self.data:
             return None, None
@@ -91,14 +91,20 @@ class CartesianMixin:
                 z_vals_hover = z_vals_hover / 100.0
                 z_unit_hover = "hPa"
 
+        offset = self.metadata.get('time_offset_seconds', 0.0)
         def make_hover(v, t, z):
             parts = []
             if not pd.isna(v):
                 if is_vector: parts.append(f"Magnitude: {v:,.1f}")
                 else:         parts.append(f"{display_name}: {v:,.2f}")
             if not pd.isna(t):
-                s = f"{t:.0f}"
-                if len(s) == 14: parts.append(f"Time: {s[8:10]}:{s[10:12]}:{s[12:14]} UTC")
+                from datetime import datetime, timezone
+                if t > 1.9e13:
+                    s = f"{t:.0f}"
+                    if len(s) == 14: parts.append(f"Time: {s[8:10]}:{s[10:12]}:{s[12:14]} UTC")
+                else:
+                    dt = datetime.fromtimestamp(t - offset, timezone.utc)
+                    parts.append(f"Time: {dt.strftime('%H:%M:%S')} UTC")
             if not pd.isna(z): parts.append(f"{z_name_hover}: {z:,.1f} {z_unit_hover}".strip())
             return "<br>".join(parts) if parts else "NaN"
 
@@ -166,7 +172,7 @@ class CartesianMixin:
             use_3d     = is_3d and (z_vals is not None)
 
             motion_dir = None
-            if cen_mode == "Plot Center Vector":
+            if cen_mode == "Vector With Dir:":
                 if cen_vector_dir == "North":
                     motion_dir = 0.0
                 elif cen_vector_dir == "Storm Motion":
@@ -261,10 +267,19 @@ class CartesianMixin:
                     z_range = [domain_bounds['z_max'], domain_bounds['z_min']]
 
         if is_3d and z_vals is not None:
+            
+            # Determine clean Z-axis title based on the column name
+            z_ax_title = z_col
+            if z_col:
+                if any(p in z_col.lower() for p in ['pres', 'pressure', 'p']):
+                    z_ax_title = "Pressure"
+                elif any(h in z_col.lower() for h in ['height', 'ght', 'altitude', 'elev']):
+                    z_ax_title = "Height"
+
             scene_dict = dict(
                 aspectmode='manual',
                 aspectratio=dict(x=1, y=1, z=z_ratio),
-                xaxis_title="Longitude", yaxis_title="Latitude", zaxis_title=z_col,
+                xaxis_title="Longitude", yaxis_title="Latitude", zaxis_title=z_ax_title,
                 xaxis=dict(range=x_range, nticks=20), yaxis=dict(range=y_range, nticks=20),
                 zaxis=dict(range=z_range, nticks=10)
             )

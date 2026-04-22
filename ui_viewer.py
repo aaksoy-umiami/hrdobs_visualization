@@ -211,7 +211,7 @@ def render_viewer_tab():
                     result = plotter._to_storm_relative(
                         tdf[t_lon_c].values, tdf[t_lat_c].values,
                         tdf[t_time_c].values,
-                        intent.sr_track_grp, "Relative to North"
+                        intent.sr_track_grp, "North"
                     )
                     if result is not None:
                         _, _, track_range_km, _, _ = result

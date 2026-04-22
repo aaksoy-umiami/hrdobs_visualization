@@ -329,11 +329,23 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
             st.info("No time data available for this variable.")
             return None
 
-        valid_mask = df_sel[time_col] > 19000000000000.0
-        dt_series  = pd.to_datetime(
-            df_sel.loc[valid_mask, time_col].apply(lambda x: f"{x:.0f}" if pd.notna(x) else None),
-            format="%Y%m%d%H%M%S", errors='coerce'
-        ).dropna()
+        # --- DYNAMIC TIME PARSER ---
+        time_vals = df_sel[time_col].dropna()
+        is_legacy_time = (time_vals > 1.9e13).any()
+        
+        # 1. Grab the offset we calculated in data_utils!
+        offset = data_pack.get('meta', {}).get('time_offset_seconds', 0.0)
+
+        if is_legacy_time:
+            valid_mask = df_sel[time_col] > 19000000000000.0
+            dt_series  = pd.to_datetime(
+                df_sel.loc[valid_mask, time_col].apply(lambda x: f"{x:.0f}" if pd.notna(x) else None),
+                format="%Y%m%d%H%M%S", errors='coerce'
+            ).dropna()
+        else:
+            # 2. Subtract the offset before converting to datetime!
+            dt_series = pd.to_datetime(df_sel[time_col] - offset, unit='s', errors='coerce').dropna()
+        # -------------------------------
 
         if dt_series.empty:
             st.warning("Time column exists, but all values are invalid or corrupted.")
@@ -434,7 +446,15 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
                     temp_df = temp_df[mask]
 
                 if not temp_df.empty:
-                    visible_dt = pd.to_datetime(temp_df[time_col].apply(lambda x: f"{x:.0f}"), format="%Y%m%d%H%M%S", errors='coerce').dropna()
+                    # 3. Grab the offset here too
+                    offset = data_pack.get('meta', {}).get('time_offset_seconds', 0.0)
+                    
+                    if is_legacy_time:
+                        visible_dt = pd.to_datetime(temp_df[time_col].apply(lambda x: f"{x:.0f}"), format="%Y%m%d%H%M%S", errors='coerce').dropna()
+                    else:
+                        # 4. Subtract the offset here too!
+                        visible_dt = pd.to_datetime(temp_df[time_col] - offset, unit='s', errors='coerce').dropna()
+                    
                     if not visible_dt.empty:
                         fit_min = max(visible_dt.min().to_pydatetime(), data_min_dt)
                         fit_max = min(visible_dt.max().to_pydatetime(), data_max_dt)
@@ -456,6 +476,19 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
                 st.session_state.pop('_slider_time_bounds', None)
                 st.rerun()
 
-        time_bounds = {'col': time_col, 'min': float(time_range[0].strftime("%Y%m%d%H%M%S")), 'max': float(time_range[1].strftime("%Y%m%d%H%M%S"))}
+        # --- DYNAMIC BOUNDS RETURN ---
+        offset = data_pack.get('meta', {}).get('time_offset_seconds', 0.0)
+        
+        if is_legacy_time:
+            ret_min = float(time_range[0].strftime("%Y%m%d%H%M%S"))
+            ret_max = float(time_range[1].strftime("%Y%m%d%H%M%S"))
+        else:
+            from datetime import timezone
+            # Add the offset back so the bounds match the raw DataFrame!
+            ret_min = time_range[0].replace(tzinfo=timezone.utc).timestamp() + offset
+            ret_max = time_range[1].replace(tzinfo=timezone.utc).timestamp() + offset
+            
+        time_bounds = {'col': time_col, 'min': ret_min, 'max': ret_max}
+        # ---------------------------------
 
     return time_bounds

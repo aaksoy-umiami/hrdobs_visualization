@@ -184,15 +184,21 @@ class RadialHeightMixin:
 
         # --- HOVER DATA EXTRACTION ---
         t_vals = plot_df[time_col].values
+        offset = self.metadata.get('time_offset_seconds', 0.0)
         
         def make_rh_hover(r, z, v, t):
             parts = [f"Range: {r:.1f} km", f"{z_disp_label}: {z:.1f} {z_unit_str}"]
             if not pd.isna(v):
                 parts.append(f"{display_name}: {v:,.2f}")
             if not pd.isna(t):
-                s = f"{t:.0f}"
-                if len(s) == 14:
-                    parts.append(f"Time: {s[8:10]}:{s[10:12]}:{s[12:14]} UTC")
+                from datetime import datetime, timezone
+                if t > 1.9e13:
+                    s = f"{t:.0f}"
+                    if len(s) == 14:
+                        parts.append(f"Time: {s[8:10]}:{s[10:12]}:{s[12:14]} UTC")
+                else:
+                    dt = datetime.fromtimestamp(t - offset, timezone.utc)
+                    parts.append(f"Time: {dt.strftime('%H:%M:%S')} UTC")
             return "<br>".join(parts)
             
         hover_text = [make_rh_hover(r, z, v, t) for r, z, v, t in zip(range_km, z_vals, color_vals, t_vals)]

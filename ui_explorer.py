@@ -107,7 +107,7 @@ def render_explorer_tab():
             "Year": "Year", "Storm Name": "Storm", "Basin": "Basin",
             "Cycle (Time)": "Cycle_Raw", "Latitude": "Lat", "Longitude": "Lon",
             "Intensity": "Intensity_ms", "MSLP": "MSLP_hPa",
-            "Category": "TC_Category",
+            "Intensity Category": "TC_Category",
         }
         for g in EXPECTED_GROUPS:
             if g in final_df.columns:
@@ -155,7 +155,7 @@ def render_explorer_tab():
         if intent.storms: 
             header_lines.append(f"# Storms: {', '.join(intent.storms)}"); has_filters = True
         if intent.cats: 
-            header_lines.append(f"# Categories: {', '.join(intent.cats)}"); has_filters = True
+            header_lines.append(f"# Intensity Categories: {', '.join(intent.cats)}"); has_filters = True
         if intent.basins: 
             header_lines.append(f"# Basins: {', '.join(intent.basins)}"); has_filters = True
         if intent.groups: 

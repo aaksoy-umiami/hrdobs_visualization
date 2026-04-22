@@ -124,10 +124,14 @@ class StormPlotterBase:
         if not all([t_col, lat_col, lon_col]):
             return
 
+        offset = self.metadata.get('time_offset_seconds', 0.0)
         def _ts(v):
             try:
-                dt = datetime.strptime(f"{v:.0f}", '%Y%m%d%H%M%S')
-                return dt.replace(tzinfo=timezone.utc).timestamp()
+                if pd.isna(v): return np.nan
+                if v > 1.9e13:
+                    dt = datetime.strptime(f"{v:.0f}", '%Y%m%d%H%M%S')
+                    return dt.replace(tzinfo=timezone.utc).timestamp()
+                return float(v) - offset
             except Exception:
                 return np.nan
 
@@ -209,7 +213,7 @@ class StormPlotterBase:
         self.var_attrs[group_name]['azimuth_north']    = {'units': 'deg', 'long_name': 'Azimuth from North (Computed)'}
         self.var_attrs[group_name]['azimuth_motion']   = {'units': 'deg', 'long_name': 'Azimuth from Storm Motion (Computed)'}
         self.var_attrs[group_name]['azimuth_shear_deep']   = {'units': 'deg', 'long_name': 'Azimuth from 850-200 hPa Shear (Computed)'}
-        self.var_attrs[group_name]['azimuth_shear_vortex'] = {'units': 'deg', 'long_name': 'Azimuth from Vortex-Removed Shear (Computed)'}
+        self.var_attrs[group_name]['azimuth_shear_vortex'] = {'units': 'deg', 'long_name': 'Azimuth from Vortex-Removed 850-200 hPa Shear (Computed)'}
 
     def sort_variables(self, var_list, group_name):
         """
@@ -294,8 +298,6 @@ class StormPlotterBase:
                 long_name = base_var.replace('_', ' ').title() + " Error"
             else:
                 long_name = variable.replace('_', ' ').title()
-        else:
-            long_name = long_name.title()
 
         units = decode_metadata(meta.get('units', ''))
         if units:
@@ -384,12 +386,17 @@ class StormPlotterBase:
             except ValueError:
                 return None
 
+        offset = self.metadata.get('time_offset_seconds', 0.0)
         def yyyymmddhhmmss_to_epoch(v):
-            s = f"{v:.0f}"
             try:
-                dt = datetime.strptime(s, '%Y%m%d%H%M%S')
-                return dt.replace(tzinfo=timezone.utc).timestamp() - cycle_epoch
-            except ValueError:
+                if pd.isna(v): return np.nan
+                if v > 1.9e13:
+                    s = f"{v:.0f}"
+                    dt = datetime.strptime(s, '%Y%m%d%H%M%S')
+                    return dt.replace(tzinfo=timezone.utc).timestamp() - cycle_epoch
+                else:
+                    return (float(v) - offset) - cycle_epoch
+            except Exception:
                 return np.nan
 
         rel_vals = np.array([yyyymmddhhmmss_to_epoch(v) for v in vals])

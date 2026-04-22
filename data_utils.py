@@ -19,8 +19,22 @@ def decode_metadata(val):
     """
     Cleans up byte strings, null-padded strings, or arrays from HDF5 metadata.
     """
-    if isinstance(val, (np.ndarray, list)) and len(val) > 0:
+    # --- V11 FIX: Properly join multi-item lists instead of just taking index 0 ---
+    if isinstance(val, (np.ndarray, list)):
+        if len(val) == 0:
+            return ""
+        if len(val) > 1:
+            parts = []
+            for elem in val:
+                if isinstance(elem, (bytes, np.bytes_)):
+                    parts.append(elem.decode('utf-8', errors='ignore').rstrip('\x00').strip())
+                else:
+                    parts.append(str(elem).strip())
+            return ", ".join(p for p in parts if p)
+        # If it's just a single-element array, extract it and process normally
         val = val[0]
+    # ------------------------------------------------------------------------------
+
     if isinstance(val, (bytes, np.bytes_, bytearray)):
         try:
             val = val.decode('utf-8') if not isinstance(val, bytearray) else val.decode('utf-8')
@@ -34,6 +48,22 @@ def decode_metadata(val):
     elif result.startswith('b"') and result.endswith('"'):
         result = result[2:-1]
     return result
+
+def get_cf_epoch_offset(time_unit_str):
+    """
+    Parses a CF-compliant time unit string and returns the offset from Unix 1970 in seconds.
+    """
+    if not isinstance(time_unit_str, str): return 0.0
+    
+    match = re.search(r'since\s+(\d{4}-\d{2}-\d{2})', time_unit_str.lower())
+    if match:
+        try:
+            origin_dt = datetime.strptime(match.group(1), '%Y-%m-%d').replace(tzinfo=timezone.utc)
+            unix_epoch_dt = datetime(1970, 1, 1, tzinfo=timezone.utc)
+            return (unix_epoch_dt - origin_dt).total_seconds()
+        except ValueError:
+            pass
+    return 0.0
 
 def get_basin_from_filename(filename):
     """
@@ -97,8 +127,22 @@ def load_data_from_h5(file_bytes):
     """
     def _safe_val(val):
         try:
+            # --- V11 FIX: Handle multi-item arrays in HDF5 extraction ---
             if hasattr(val, '__len__') and not isinstance(val, (str, bytes)):
+                if len(val) == 0:
+                    return ""
+                if len(val) > 1:
+                    parts = []
+                    for elem in val:
+                        if isinstance(elem, (bytes, bytearray, np.bytes_)):
+                            parts.append(elem.decode('utf-8', errors='replace').rstrip('\x00').strip())
+                        else:
+                            parts.append(str(elem).strip())
+                    return ", ".join(parts)
+                # If length is exactly 1, extract it safely
                 val = val.flat[0] if hasattr(val, 'flat') else val[0]
+            # ------------------------------------------------------------
+            
             if isinstance(val, (bytes, bytearray)):
                 val = val.decode('utf-8', errors='replace').rstrip('\x00').strip()
             elif isinstance(val, np.bytes_):
@@ -233,6 +277,16 @@ def load_data_from_h5(file_bytes):
     if metadata['storm_center']:
         clat, clon = metadata['storm_center']
         metadata['bounds'] = [clon-3.0, clon+3.0, clat-3.0, clat+3.0]
+
+    # Dynamically determine the time offset for this file
+    metadata['time_offset_seconds'] = 0.0
+    for grp_attrs in var_attrs.values():
+        for var_name, attrs in grp_attrs.items():
+            if var_name.lower() == 'time' and 'units' in attrs:
+                metadata['time_offset_seconds'] = get_cf_epoch_offset(attrs['units'])
+                break
+        if metadata['time_offset_seconds'] != 0.0:
+            break
         
     return {'data': data_dict, 'track': track_df, 'meta': metadata, 'var_attrs': var_attrs}
 
@@ -249,10 +303,15 @@ def inject_derived_fields(raw_data_pack):
             if k.startswith('track_'): return k
         return None
 
+    offset = raw_data_pack['meta'].get('time_offset_seconds', 0.0)
     def _ts(v):
         try:
-            dt = datetime.strptime(f"{v:.0f}", '%Y%m%d%H%M%S')
-            return dt.replace(tzinfo=timezone.utc).timestamp()
+            if pd.isna(v): return np.nan
+            if v > 1.9e13:
+                dt = datetime.strptime(f"{v:.0f}", '%Y%m%d%H%M%S')
+                return dt.replace(tzinfo=timezone.utc).timestamp()
+            # Dynamic CF subtraction!
+            return float(v) - offset
         except Exception:
             return np.nan
 

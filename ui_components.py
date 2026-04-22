@@ -71,14 +71,15 @@ def sidebar_label(text: str, enabled: bool = True, size: str = 'body'):
 # Multiselect with Select All / Deselect All
 # ---------------------------------------------------------------------------
 
-def multiselect_with_controls(label: str, options: list, key: str):
+def multiselect_with_controls(label: str, options: list, key: str, **kwargs):
     """Render a st.multiselect followed by compact Select All / Deselect All buttons."""
     if key in st.session_state:
         st.session_state[key] = [
             x for x in st.session_state[key] if x in options
         ]
 
-    st.multiselect(label, options, key=key)
+    # **kwargs allows format_func, help, etc. to pass through to the native widget
+    st.multiselect(label, options, key=key, **kwargs)
 
     st.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
 
