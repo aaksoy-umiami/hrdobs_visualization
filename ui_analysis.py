@@ -84,7 +84,9 @@ def render_analysis_tab():
     intent = render_analysis_controls()
 
     if not intent.data_pack:
-        st.info("👈 Please upload an AI-Ready HDF5 file in the sidebar to begin analysis.")
+        spacer('lg')
+        spacer('lg')
+        st.info("👈 **Ready to explore?**\nPlease upload an AI-Ready HDF5 file to the sidebar to begin.")
         return
 
     data_pack = intent.data_pack

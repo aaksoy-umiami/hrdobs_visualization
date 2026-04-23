@@ -63,7 +63,7 @@ def render_explorer_tab():
     if not any_active:
         spacer('lg')
         spacer('lg')
-        st.info("💡 **Ready to explore?**\nPlease make a selection from the filters to begin.")
+        st.info("👈 **Ready to explore?**\nPlease make a selection from the filters to begin.")
         return
 
     # ------------------------------------------------------------------

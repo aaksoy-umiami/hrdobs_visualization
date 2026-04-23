@@ -36,7 +36,9 @@ def render_viewer_tab():
     intent = render_viewer_controls(plotter)
 
     if intent.data_pack is None:
-        st.info("👈 Please upload an AI-Ready HDF5 file from the sidebar to visualize its contents.")
+        spacer('lg')
+        spacer('lg')
+        st.info("👈 **Ready to explore?**\nPlease upload an AI-Ready HDF5 file to the sidebar to begin.")
         return
 
     data_pack = intent.data_pack
