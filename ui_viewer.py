@@ -12,6 +12,7 @@ import pandas as pd
 from ui_layout import apply_viewer_compaction_css
 from ui_viewer_controls import render_viewer_controls
 from plotter import StormPlotter, add_flight_tracks
+from ui_components import spacer
 
 _MAX_PLOT_POINTS = 50_000
 

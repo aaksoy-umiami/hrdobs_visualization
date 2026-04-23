@@ -11,6 +11,7 @@ from scipy.stats import gaussian_kde
 from ui_layout import apply_viewer_compaction_css
 from ui_analysis_controls import render_analysis_controls
 from plotter import StormPlotter
+from ui_components import spacer
 
 
 def _apply_log_transform(data_pack, sel_group, variable, coord_var,
