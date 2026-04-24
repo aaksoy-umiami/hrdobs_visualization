@@ -173,7 +173,8 @@ def _build_wind_pressure_scatter(plot_df: pd.DataFrame, unit: str) -> go.Figure:
     for cat in CAT_ORDER:
         cat_data = wp_df[wp_df['TC_Category'] == cat] if 'TC_Category' in wp_df.columns else pd.DataFrame()
         if not cat_data.empty:
-            hover_t = ("<b>" + cat_data['Storm_ID'] + "</b><br>" + "Intensity: " + cat_data['Intensity_Str'] + f" {unit}<br>" +
+            hover_t = ("<b>" + cat_data['Storm_ID'] + "</b><br>" + 
+                       "Intensity: " + cat_data['Intensity_Str'] + f" {unit}<br>" +
                        "MSLP: " + cat_data['MSLP_hPa'].map('{:.1f}'.format) + " hPa")
             fig_wp.add_trace(go.Scatter(
                 x=cat_data['Intensity_Converted'], y=cat_data['MSLP_hPa'], mode='markers',
@@ -184,36 +185,32 @@ def _build_wind_pressure_scatter(plot_df: pd.DataFrame, unit: str) -> go.Figure:
     x = wp_df['Intensity_Converted']
     y = wp_df['MSLP_hPa']
     
-    x_ticks = []
-    tick_fmt = ''
-    if len(x) > 0:
-        x_min, x_max = x.min(), x.max()
-        if x_min == x_max: 
-            x_max += 1
+    # Use the unit directly to determine the decimal formatting
+    tick_fmt = '.0f' if unit == 'knots' else '.1f'
+    
+    if len(x) > 0 and len(x) > 1 and x.nunique() > 1:
+        slope, intercept = np.polyfit(x, y, 1)
+        r_sq = (np.corrcoef(x, y)[0, 1] ** 2) * 100
         
-        x_ticks = np.linspace(x_min, x_max, 4).round().astype(int) if unit == 'knots' else np.linspace(x_min, x_max, 4)
-        tick_fmt = '.0f' if unit == 'knots' else '.1f'
-        
-        if len(x) > 1 and x.nunique() > 1:
-            slope, intercept = np.polyfit(x, y, 1)
-            r_sq = (np.corrcoef(x, y)[0, 1] ** 2) * 100
-            
-            fig_wp.add_trace(go.Scatter(
-                x=np.array([x.min(), x.max()]), y=slope * np.array([x.min(), x.max()]) + intercept,
-                mode='lines', line=dict(color='black', width=2, dash='dash'), hoverinfo='skip', showlegend=False
-            ))
-            fig_wp.add_annotation(
-                x=0.96, y=0.96, xref='paper', yref='paper', xanchor='right', yanchor='top',
-                text=f"R² = {r_sq:.2f}%", showarrow=False, bgcolor="rgba(255, 255, 255, 0.85)", 
-                bordercolor="black", borderwidth=1, font=dict(color="black", size=12)
-            )
+        fig_wp.add_trace(go.Scatter(
+            x=np.array([x.min(), x.max()]), y=slope * np.array([x.min(), x.max()]) + intercept,
+            mode='lines', line=dict(color='black', width=2, dash='dash'), hoverinfo='skip', showlegend=False
+        ))
+        fig_wp.add_annotation(
+            x=0.96, y=0.96, xref='paper', yref='paper', xanchor='right', yanchor='top',
+            text=f"R² = {r_sq:.2f}%", showarrow=False, bgcolor="rgba(255, 255, 255, 0.85)", 
+            bordercolor="black", borderwidth=1, font=dict(color="black", size=12)
+        )
 
     fig_wp.update_layout(
         title={'text': "Wind-Pressure Rel.", 'x': 0.5, 'xanchor': 'center', 'xref': 'paper'}, 
         margin=PLOT_MARGINS_SUMMARY, paper_bgcolor=CLR_PLOT_BG, plot_bgcolor=CLR_PLOT_BG, height=PLOT_HEIGHT_SUMMARY,
-        xaxis=dict(title=f'Intensity ({unit})', tickmode='array', tickvals=x_ticks, tickformat=tick_fmt,   
+        
+        # Directly inject {unit} into the axis title
+        xaxis=dict(title=f'Storm Intensity ({unit})', tickformat=tick_fmt,   
                    showgrid=True, gridcolor='rgba(200, 200, 200, 0.4)', showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
                    tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY), fixedrange=True, automargin=False),
+                   
         yaxis=dict(title='MSLP (hPa)', showgrid=True, gridcolor='rgba(200, 200, 200, 0.4)',
                    showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
                    tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY), fixedrange=True, automargin=False)
@@ -251,12 +248,17 @@ def _build_observations_bar_chart(plot_df: pd.DataFrame) -> go.Figure:
             (*get_metrics('tdr_noaa42', 'tdr_noaa43'), PLATFORM_COLORS['NOAA P-3'], 'NOAA P-3'), 
             (*get_metrics('tdr_noaa49'), PLATFORM_COLORS['NOAA G-IV'], 'NOAA G-IV')
         ],
+        # 1. ADD THIS LINE: Insert SHIPS data mapped to the yellow 'Tracks' color
+        [(*get_metrics('ships_params'), PLATFORM_COLORS['Tracks'], 'SHIPS')],
+        
         [(*get_metrics('track_vortex_message'), PLATFORM_COLORS['Tracks'], 'Tracks')], 
         [(*get_metrics('track_best_track'), PLATFORM_COLORS['Tracks'], 'Tracks')], 
         [(*get_metrics('track_spline_track'), PLATFORM_COLORS['Tracks'], 'Tracks')]
     ]
 
-    group_labels = ['Dropsondes', 'Flight Level', 'SFMR', 'TDR', 'Vortex Msg.', 'Best Track', 'High-Res. Track']
+    # 2. UPDATE THIS LINE: Add 'SHIPS' to the corresponding x-axis labels
+    group_labels = ['Dropsondes', 'Flight Level', 'SFMR', 'TDR', 'SHIPS', 'Vortex Msg.', 'Best Track', 'High-Res. Track']
+    
     barWidth, groupGap = 0.35, 0.8
     x_vals, y_vals, colors, hover_texts, groupCenters, currX = [], [], [], [], [], 0
 
@@ -317,6 +319,13 @@ def render_explorer_summary_plots(df: pd.DataFrame, unit: str):
 
         plot_df, map_df = _prep_plot_data(df, unit)
 
+        st.markdown(
+            "<div style='text-align: center; margin-bottom: 20px; color: #666; font-size: 0.95em;'>"
+            "💡 <i><b>Tip:</b> Please hover over the plots with your mouse to reveal further controls in the top right corner, including zooming, panning, and downloading.</i>"
+            "</div>",
+            unsafe_allow_html=True
+        )
+
         # =====================================================================
         # TOP ROW: The Geographic Map 
         # =====================================================================
@@ -343,7 +352,8 @@ def render_explorer_summary_plots(df: pd.DataFrame, unit: str):
         with c2:
             fig_wp = _build_wind_pressure_scatter(plot_df, unit)
             if fig_wp.data:
-                st.plotly_chart(fig_wp, width="stretch")
+                # The dynamic key prevents Streamlit from freezing the plot when units toggle
+                st.plotly_chart(fig_wp, width="stretch", key=f"wp_scatter_{unit}_{len(plot_df)}")
             else:
                 st.info("Not enough valid data for Wind-Pressure plot.")
 

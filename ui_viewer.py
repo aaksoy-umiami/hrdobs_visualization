@@ -238,6 +238,14 @@ def render_viewer_tab():
                                 new_hi = max(current_range[1], t_z_max)
                                 fig.update_layout(yaxis_range=[new_lo, new_hi])
                 except Exception: pass
+
+        st.markdown(
+            "<div style='text-align: center; margin-bottom: 20px; color: #666; font-size: 0.95em;'>"
+            "💡 <i><b>Tip:</b> Please hover over the plot with your mouse to reveal further controls in the top right corner, including zooming, panning, and downloading.</i>"
+            "</div>",
+            unsafe_allow_html=True
+        )
+
         col_left, col_center, col_right = st.columns([1, 8, 1])
         with col_center:
             st.plotly_chart(fig, width="stretch")

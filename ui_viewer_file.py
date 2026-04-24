@@ -8,7 +8,7 @@ File upload section for the File Data Viewer tab.
 import streamlit as st
 import pandas as pd
 
-from config import EXPECTED_GROUPS, EXPECTED_META
+from config import EXPECTED_GROUPS, EXPECTED_META, SHIPS_PREDICTOR_META
 from data_utils import (
     load_data_from_h5, 
     decode_metadata, 
@@ -149,8 +149,12 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                             val_str = str(val)
                             
                         # Extract units and long name if available
-                        units = current_pack['var_attrs'].get('ships_params', {}).get(col, {}).get('units', '')
-                        long_name = current_pack['var_attrs'].get('ships_params', {}).get(col, {}).get('long_name', '')
+                        if col in SHIPS_PREDICTOR_META:
+                            units = SHIPS_PREDICTOR_META[col][0]
+                            long_name = SHIPS_PREDICTOR_META[col][1]
+                        else:
+                            units = current_pack['var_attrs'].get('ships_params', {}).get(col, {}).get('units', '')
+                            long_name = current_pack['var_attrs'].get('ships_params', {}).get(col, {}).get('long_name', '')
                         
                         # Add hover tooltip for the long name
                         if long_name:

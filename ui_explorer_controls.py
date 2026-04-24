@@ -22,12 +22,26 @@ from ui_components import spacer, sidebar_label, multiselect_with_controls, sect
 
 # --- SHIPS Parameter Definitions ---
 SHIPS_CONFIG = {
-    'incv_kt':  {'label': 'Intensity Change (kt)', 'step': 1.0},
-    'dtl_km':   {'label': 'Distance to Land (km)', 'step': 10.0},
-    'shrd_kt':  {'label': 'Shear Magnitude (kt)',  'step': 1.0},
-    'shtd_deg': {'label': 'Shear Direction (deg)', 'step': 10.0},
-    'rhmd_pct': {'label': 'Mid RH (%)',            'step': 1.0},
-    'vmpi_kt':  {'label': 'MPI (kt)',              'step': 1.0},
+    'incv_kt':    {'label': '6-h Intensity Change (kt)',                             'step': 5.0},
+    'dtl_km':     {'label': 'Distance to Land (km)',                                 'step': 5.0},
+    'shrd_kt':    {'label': 'Shear Magnitude (kt)',                                  'step': 1.0},
+    'shtd_deg':   {'label': 'Shear Direction (deg)',                                 'step': 10.0},
+    'rhmd_pct':   {'label': 'Mid-Level Rel. Hum. (%)',                               'step': 1.0},
+    'nsst_degc':  {'label': 'Analyzed SST from Navy NCODA (deg C)',                  'step': 0.25},
+    'nohc_kjcm2': {'label': 'Analyzed Ocean Heat Content from Navy NCODA (kJ/cm^2)', 'step': 1.0},
+    'vmpi_kt':    {'label': 'Max. Potential Intensity (kt)',                         'step': 1.0},
+}
+
+# --- Geographic Region Definitions ---
+GEO_REGIONS = {
+    "Global (All)": {'Basin': 'All', 'lat': None, 'lon': None},
+    "Main Development Region (MDR)": {'Basin': 'North Atlantic', 'lat': (10.0, 20.0), 'lon': (-60.0, -20.0)},
+    "Gulf of Mexico": {'Basin': 'North Atlantic', 'lat': (18.0, 30.0), 'lon': (-98.0, -81.0)},
+    "Caribbean Sea": {'Basin': 'North Atlantic', 'lat': (9.0, 22.0), 'lon': (-89.0, -60.0)},
+    "Western Atlantic": {'Basin': 'North Atlantic', 'lat': (20.0, 45.0), 'lon': (-80.0, -60.0)},
+    "Eastern Pacific (EPAC)": {'Basin': 'Eastern Pacific', 'lat': (5.0, 30.0), 'lon': (-140.0, -80.0)},
+    "Central Pacific (CPAC)": {'Basin': 'Central Pacific', 'lat': (5.0, 30.0), 'lon': (-180.0, -140.0)},
+    "Custom": {'Basin': 'All', 'lat': None, 'lon': None}
 }
 
 @dataclass
@@ -69,6 +83,15 @@ def get_dropdown_mask(df, skip_filters, has_vars):
         m &= ((df['Intensity_ms'] >= st.session_state.ui_int[0] * mult) & (df['Intensity_ms'] <= st.session_state.ui_int[1] * mult))
     if 'MSLP' not in skip_filters and 'ui_slp' in st.session_state:
         m &= ((df['MSLP_hPa'] >= st.session_state.ui_slp[0]) & (df['MSLP_hPa'] <= st.session_state.ui_slp[1]))
+
+    # --- Geographic Filtering (Cycle-Based) ---
+    if 'Geography' not in skip_filters:
+        lat_b = st.session_state.get('ui_lat')
+        lon_b = st.session_state.get('ui_lon')
+
+        if lat_b and lon_b:
+            m &= ((df['Lat'] >= lat_b[0]) & (df['Lat'] <= lat_b[1]) & \
+                  (df['Lon'] >= lon_b[0]) & (df['Lon'] <= lon_b[1]))
     
     # Apply SHIPS filters
     if 'SHIPS' not in skip_filters:
@@ -90,6 +113,12 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
     init_min_p = float(np.floor(raw_min_p))
     init_max_p = float(np.ceil(raw_max_p))
 
+    # Calculate global DB bounds for Lat/Lon
+    db_lat_min = float(np.floor(db_df['Lat'].min())) if not db_df['Lat'].isna().all() else -90.0
+    db_lat_max = float(np.ceil(db_df['Lat'].max())) if not db_df['Lat'].isna().all() else 90.0
+    db_lon_min = float(np.floor(db_df['Lon'].min())) if not db_df['Lon'].isna().all() else -180.0
+    db_lon_max = float(np.ceil(db_df['Lon'].max())) if not db_df['Lon'].isna().all() else 180.0
+
     # Calculate global bounds for SHIPS variables
     ships_global_bounds = {}
     for col, config in SHIPS_CONFIG.items():
@@ -102,6 +131,10 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
     default_state = {
         'ui_years': [], 'ui_storms': [], 'ui_cats': [], 'ui_basins': [],
         'ui_groups': [], 'ui_vars': [],
+        'ui_geo_mode': 'Passed Through',
+        'ui_region': 'Global (All)',
+        'ui_lat': (db_lat_min, db_lat_max),
+        'ui_lon': (db_lon_min, db_lon_max),
         'ui_unit': "knots", 'prev_unit': "knots",
         'ui_int': (float(np.floor(raw_min_i * MS_TO_KTS)), float(np.ceil(raw_max_i * MS_TO_KTS))), # <-- Apply knot conversion
         'ui_slp': (init_min_p, init_max_p),
@@ -129,6 +162,10 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         cur_mult = MS_TO_KTS if st.session_state.get('ui_unit') == "knots" else 1.0
         st.session_state.ui_int = (float(np.floor(raw_min_i * cur_mult)), float(np.ceil(raw_max_i * cur_mult)))
         st.session_state.ui_slp  = (init_min_p, init_max_p)
+        st.session_state.ui_geo_mode = 'Passed Through'
+        st.session_state.ui_region = 'Global (All)'
+        st.session_state.ui_lat    = (db_lat_min, db_lat_max)
+        st.session_state.ui_lon    = (db_lon_min, db_lon_max)
         st.session_state.ui_sort_col   = 'Year'
         st.session_state.ui_sort_order = 'Ascending'
         st.session_state._last_t_min_i = float(np.floor(raw_min_i * cur_mult))
@@ -147,6 +184,19 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
     with st.sidebar.container(border=True):
         st.markdown("#### Filter by Storm Information")
 
+        # --- ANTI-RESET HELPER ---
+        def get_safe_options(filtered_series, session_key):
+            """Prevents Streamlit from secretly deleting selections when cross-filters narrow the options."""
+            avail = list(filtered_series.dropna().unique())
+            current_sel = st.session_state.get(session_key, [])
+            for item in current_sel:
+                if item not in avail:
+                    avail.append(item)
+            try:
+                return sorted(avail)
+            except TypeError:
+                return avail # Fallback just in case of mixed data types
+
         filter_mappings = [
             ("Year",        "ui_years",  "Year",        "Year"),
             ("Name",        "ui_storms", "Storm",       "Storm"),
@@ -154,13 +204,58 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         ]
         
         for label, key, col, skip_arg in filter_mappings:
-            avail = sorted(db_df[get_dropdown_mask(db_df, skip_arg, has_vars)][col].dropna().unique())
+            filtered_series = db_df[get_dropdown_mask(db_df, skip_arg, has_vars)][col]
+            avail = get_safe_options(filtered_series, key)
             multiselect_with_controls(label, avail, key)
             section_divider()
 
+        # --- NEW GEOGRAPHIC LOCATION SECTION ---
+        st.markdown("#### Geographic Location")
+        
+        avail_basins_in_db = db_df['Basin'].dropna().unique()
+        avail_regions = [r for r, conf in GEO_REGIONS.items() if conf['Basin'] == 'All' or conf['Basin'] in avail_basins_in_db]
+        
+        def clip_bounds(val_tuple, global_min, global_max):
+            v_min = max(val_tuple[0], global_min)
+            v_max = min(val_tuple[1], global_max)
+            return (global_min, global_max) if v_min > v_max else (v_min, v_max)
+
+        def on_region_change():
+            # Use .get() to prevent AttributeErrors during Streamlit's callback execution phase
+            reg = st.session_state.get("ui_region", "Global (All)")
+            
+            if reg in GEO_REGIONS and GEO_REGIONS[reg]['lat'] is not None:
+                st.session_state.ui_lat = clip_bounds(GEO_REGIONS[reg]['lat'], db_lat_min, db_lat_max)
+                st.session_state.ui_lon = clip_bounds(GEO_REGIONS[reg]['lon'], db_lon_min, db_lon_max)
+            elif reg == "Global (All)":
+                st.session_state.ui_lat = (db_lat_min, db_lat_max)
+                st.session_state.ui_lon = (db_lon_min, db_lon_max)
+
+        def on_geo_slider_change():
+            st.session_state.ui_region = "Custom"
+            
+        # Updated Label
+        st.selectbox("Filter Region ('Custom' Unfreezes Lat/Lon Sliders):", avail_regions, key="ui_region", on_change=on_region_change)
+        
+        spacer('sm')
+        
+        # Check if the sliders should be disabled (locked)
+        disable_sliders = st.session_state.get("ui_region", "Global (All)") != "Custom"
+        
+        sidebar_label("Longitude (deg)", size="label")
+        st.slider("Longitude", min_value=db_lon_min, max_value=db_lon_max, step=1.0, key="ui_lon", 
+                  label_visibility="collapsed", on_change=on_geo_slider_change, disabled=disable_sliders)
+        
+        sidebar_label("Latitude (deg)", size="label")
+        st.slider("Latitude", min_value=db_lat_min, max_value=db_lat_max, step=1.0, key="ui_lat", 
+                  label_visibility="collapsed", on_change=on_geo_slider_change, disabled=disable_sliders)
+        
+        section_divider()
+
         # --- INTENSITY & MSLP GROUPING (No separators) ---
-        avail_cats = sorted(db_df[get_dropdown_mask(db_df, "TC_Category", has_vars)]["TC_Category"].dropna().unique())
-        multiselect_with_controls("Intensity Category", avail_cats, "ui_cats")
+        filtered_cats = db_df[get_dropdown_mask(db_df, "TC_Category", has_vars)]["TC_Category"]
+        avail_cats = get_safe_options(filtered_cats, "ui_cats")
+        multiselect_with_controls("Filter by Category", avail_cats, "ui_cats")
         
         spacer('sm')
 
@@ -232,57 +327,74 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         st.slider("MSLP", min_value=init_min_p, max_value=init_max_p, step=1.0, key="ui_slp", label_visibility="collapsed")
 
     with st.sidebar.container(border=True):
-        st.markdown("#### Filter Rows by Aircraft/Platform/Track/Variable")
+        st.markdown("#### Filter by Available Data")
         
         df_groups    = db_df[get_dropdown_mask(db_df, 'Groups', has_vars)]
         # Removed sorted() to preserve the exact order defined in config.py's EXPECTED_GROUPS
         avail_groups = [g for g in EXPECTED_GROUPS if g in df_groups.columns and pd.to_numeric(df_groups[g], errors='coerce').fillna(0).sum() > 0]
-        multiselect_with_controls('Contains aircraft/platform/track group:', avail_groups, 'ui_groups')
+        
+        # --- Anti-Reset for Groups ---
+        for sel_g in st.session_state.get('ui_groups', []):
+            if sel_g not in avail_groups:
+                avail_groups.append(sel_g)
+        # Re-apply EXPECTED_GROUPS sorting to the newly appended items
+        avail_groups = [g for g in EXPECTED_GROUPS if g in avail_groups] + [g for g in avail_groups if g not in EXPECTED_GROUPS]
+
+        multiselect_with_controls('Contains Aircraft/Platform/Track Group:', avail_groups, 'ui_groups')
 
         section_divider()
 
         df_vars    = db_df[get_dropdown_mask(db_df, 'Vars', has_vars)]
         avail_vars = (sorted(set(v.strip() for v_str in df_vars['Observation_Variables'] if isinstance(v_str, str) for v in v_str.split(',') if v.strip() and v.strip().lower() != 'nan')) if has_vars else [])
 
+        df_vars    = db_df[get_dropdown_mask(db_df, 'Vars', has_vars)]
+        avail_vars = (sorted(set(v.strip() for v_str in df_vars['Observation_Variables'] if isinstance(v_str, str) for v in v_str.split(',') if v.strip() and v.strip().lower() != 'nan')) if has_vars else [])
+
+        # --- RESTRICT TO OBSERVED VARIABLES ONLY ---
+        # 1. Identify coordinates from config
+        excluded_vars = set([k.lower() for k, v in GLOBAL_VAR_CONFIG.items() if v.get('is_coord', False)])
+        # 2. Add all SHIPS parameters
+        excluded_vars.update([k.lower() for k in SHIPS_PREDICTOR_META.keys()])
+        # 3. Add explicit structural track parameters
+        excluded_vars.update(['lat', 'latitude', 'clat', 'lon', 'longitude', 'clon', 'time', 'rmw', 'vmax', 'pmin'])
+
+        # Filter the available list to strictly remove coordinates, SHIPS params, AND error variables
+        avail_vars = [
+            v for v in avail_vars 
+            if v.lower() not in excluded_vars 
+            and not v.lower().endswith('err') 
+            and not v.lower().endswith('_err') 
+            and not v.lower().endswith('error')
+        ]
+
         # --- SMART VARIABLE FILTERING (Cumulative Mask) ---
         active_groups = st.session_state.get('ui_groups', [])
         if active_groups:
             allowed_vars = set()
-            ships_vars = list(SHIPS_CONFIG.keys()) # <-- Now uses your existing global import!
-            track_vars = ['lat', 'latitude', 'clat', 'lon', 'longitude', 'clon', 'time', 'vmax', 'pmin', 'rmw']
             
-            # Map specific keywords in your group names to their respective variables
             instrument_mappings = {
-                'sfmr': ['SFC_WSPD', 'RAIN_RATE', 'lat', 'lon', 'time'],
-                'tdr': ['DBZ', 'VR', 'w', 'u', 'v', 'lat', 'lon', 'time', 'altitude', 'height', 'dz', 'vt'],
-                'flight_level': ['T', 'Td', 'wspd', 'wdir', 'u', 'v', 'p', 'height', 'lat', 'lon', 'time', 'w', 'hwspd', 'theta', 'theta_e'],
-                'dropsonde': ['T', 'RH', 'wspd', 'wdir', 'u', 'v', 'p', 'height', 'altitude', 'ght', 'lat', 'lon', 'time', 'vt', 'mr', 'theta', 'theta_e', 'sfcp', 'elev'],
-                'axbt': ['SST', 'T', 'depth', 'lat', 'lon', 'time']
+                'sfmr': ['SFC_WSPD', 'RAIN_RATE'],
+                'tdr': ['DBZ', 'VR', 'w', 'u', 'v', 'dz', 'vt'],
+                'flight_level': ['T', 'Td', 'wspd', 'wdir', 'u', 'v', 'w', 'hwspd', 'theta', 'theta_e'],
+                'dropsonde': ['T', 'RH', 'wspd', 'wdir', 'u', 'v', 'vt', 'mr', 'theta', 'theta_e'],
+                'axbt': ['SST', 'T', 'depth']
             }
             
             for g in active_groups:
                 g_lower = g.lower()
-                if g_lower == 'ships_params':
-                    allowed_vars.update(ships_vars)
-                elif g_lower.startswith('track_'):
-                    allowed_vars.update(track_vars)
-                else:
-                    # Check if the group name contains an instrument keyword (e.g., 'dropsonde_ghawk' contains 'dropsonde')
-                    matched = False
-                    for inst, ivars in instrument_mappings.items():
-                        if inst in g_lower:
-                            # Add both the exact cases and lowercase versions to be safe
-                            allowed_vars.update(ivars)
-                            allowed_vars.update([iv.lower() for iv in ivars])
-                            matched = True
-                    
-                    # Fallback: if we have an unmapped group, add all remaining non-derived vars just in case
-                    if not matched:
-                        obs_vars = [k for k, v in GLOBAL_VAR_CONFIG.items() if not v.get('is_derived', False) and k not in track_vars]
-                        allowed_vars.update(obs_vars)
-                        allowed_vars.update(['lat', 'latitude', 'lon', 'longitude', 'time', 'p', 'height', 'altitude'])
+                matched = False
+                for inst, ivars in instrument_mappings.items():
+                    if inst in g_lower:
+                        allowed_vars.update(ivars)
+                        allowed_vars.update([iv.lower() for iv in ivars])
+                        matched = True
+                
+                # Fallback: add all remaining valid non-derived/non-excluded variables
+                if not matched:
+                    obs_vars = [k for k, v in GLOBAL_VAR_CONFIG.items() if not v.get('is_derived', False) and not v.get('is_coord', False)]
+                    allowed_vars.update(obs_vars)
 
-            # Intersect available variables with the cumulative allowed list (case-insensitive check)
+            # Intersect available variables with the allowed list
             avail_vars = [v for v in avail_vars if v in allowed_vars or v.lower() in allowed_vars or v.upper() in allowed_vars]
         # --------------------------------------------------
 
@@ -296,8 +408,8 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
 
         # 3. Add SHIPS parameters from SHIPS_PREDICTOR_META
         # This unpacks the (unit, description) tuple automatically
-        for k, (unit, desc) in SHIPS_PREDICTOR_META.items():
-            var_display_map[k] = f"{desc} ({unit})"
+        for k, (ships_unit, desc) in SHIPS_PREDICTOR_META.items():
+            var_display_map[k] = f"{desc} ({ships_unit})"
 
         # 4. Update with track/coordinate variables
         var_display_map.update({
@@ -324,13 +436,19 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
             return short_name
         # ----------------------------------
 
+        # --- Anti-Reset for Variables ---
+        for sel_v in st.session_state.get('ui_vars', []):
+            if sel_v not in avail_vars:
+                avail_vars.append(sel_v)
+        avail_vars = sorted(avail_vars)
+
         # Pass the format_func into the updated wrapper!
-        multiselect_with_controls('Contains variable:', avail_vars, 'ui_vars', format_func=format_var_name)
+        multiselect_with_controls('Contains Observed Variable:', avail_vars, 'ui_vars', format_func=format_var_name)
 
     # --- New SHIPS Environment Filters ---
     with st.sidebar.container(border=True):
-        st.markdown("#### Filter Rows by SHIPS Parameter")
-        st.checkbox("Include files missing SHIPS data", key="ui_ships_inc_nan")
+        st.markdown("#### Filter by SHIPS Parameter")
+        st.checkbox("Show all files regardless of whether they contain SHIPS data", key="ui_ships_inc_nan")
         
         slider_mask_ships = get_dropdown_mask(db_df, ['SHIPS'], has_vars)
         slider_df_ships = db_df[slider_mask_ships]

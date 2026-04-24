@@ -109,6 +109,12 @@ def render_analysis_tab():
         data_pack['meta'], data_pack['var_attrs']
     )
 
+    helper_text = (
+        "<div style='text-align: center; margin-bottom: 20px; color: #666; font-size: 0.95em;'>"
+        "💡 <i><b>Tip:</b> Please hover over the plot with your mouse to reveal further controls in the top right corner, including zooming, panning, and downloading.</i>"
+        "</div>"
+    )
+
     try:
         if intent.analysis_type == "Histogram Analysis (1D)":
             fig = plotter.plot_histogram(
@@ -120,6 +126,7 @@ def render_analysis_tab():
                 show_kde=intent.show_kde
             )
             if fig:
+                st.markdown(helper_text, unsafe_allow_html=True)
                 _, col_center, _ = st.columns([1, 8, 1])
                 with col_center:
                     st.plotly_chart(fig, width="stretch")
@@ -148,6 +155,7 @@ def render_analysis_tab():
                     map_option=intent.map_option
                 )
                 if fig:
+                    st.markdown(helper_text, unsafe_allow_html=True)
                     _, col_center, _ = st.columns([1, 8, 1])
                     with col_center:
                         st.plotly_chart(fig, width="stretch")
@@ -197,6 +205,8 @@ def render_analysis_tab():
                 
                 if ret is not None:
                     fig, stats_list = ret
+
+                    st.markdown(helper_text, unsafe_allow_html=True)
                     
                     _, col_center, _ = st.columns([1, 8, 1])
                     with col_center:

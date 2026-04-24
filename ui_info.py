@@ -176,17 +176,20 @@ def _render_usage():
     st.markdown("### How To Use This App")
 
     st.markdown("""
-    #### 💡 General Workflow & Pro-Tips
+    #### 💡 General Workflow & Usage Tips
     1. **Navigate** between different tools using the tabs at the top of the page.
     2. **Configure** your view using the options in the left sidebar. Results update automatically—no "Run" button is needed!
     3. **File Upload Requirements:**
        - No file upload is needed for Tab 1 as it uses its own built-in database.
-       - Tabs 2 & 3 require uploading one hdf5 file to memory.
-    4. **Shared Memory:** Data uploaded in the *Single-File Plotter* (Tab 2) is automatically shared with the *Statistical Analysis* tool (Tab 3). You only need to load your file once.
-    5. **Interactive Charts:** All generated charts are fully interactive. You can hover over data points for exact values, click and drag to zoom or rotate 3D plots, and use the camera icon in the top right of any chart to download it as an image.
-    6. **Interactive vs. Manual Zooming:**
+       - Tabs 2 and 3 require uploading one hdf5 file to memory.
+    4. **Shared Memory:** Data uploaded in the *Individual File Plotter* tab (Tab 2) is automatically shared with the *Individual File Statistical Analysis* tab (Tab 3). You only need to load your file once.
+    
+    #### 💡 Chart Controls and Saving Figures
+    1. **Interactive Charts:** All generated charts are fully interactive. You can hover over data points for exact values, click and drag to zoom or rotate 3D plots, and use the camera icon in the top right of any chart to download it as an image.
+    2. **Interactive vs. Manual Zooming:**
        - For quick zooming and panning, use the hover controls on the top right of the plots.
        - Manual zooming controls in the sidebar will redefine the color scales/full plot area and redraw vectors/scatter points for more precise plotting.
+    3. **Saving figures as PNG:** Then controls that appear on the top-right of figures when hovering over them also provide the option to save them as png graphic files.  
 
     ---
 
@@ -194,7 +197,7 @@ def _render_usage():
     **Purpose:** Browse the full HRDOBS inventory across all storms, years, and platforms without needing to download massive files first. *(The global inventory database is built into this app).*
 
     **Quick Start:**
-    1. **Filter** the inventory using the sidebar (select specific storm names, years, basins, or observation platforms).
+    1. **Filter** the inventory using the sidebar (select specific storm names, years, basins, geographical region, observation platforms/variables, or SHIPS parameters).
     2. **Refine** the table by toggling specific variable groups on or off.
        - **View Summary Table of Filtered Results:** Shows a storm-based summary table for the filters applied.
        - **View Summary Graphics of Filtered Results:** Displays summary graphics based on the filters applied.
@@ -235,4 +238,3 @@ def _render_usage():
     - **Normalization (Histograms):** Display bin counts as raw numbers or normalize them to percentages (e.g., fully normalized, or normalized within specific X/Y slices).
     - **Scatter Enhancements:** Overlay a linear trendline, or color your scatter points by a third variable or by local point density.
     """)
-  

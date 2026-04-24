@@ -70,6 +70,7 @@ def display_summary_table(final_df, unit):
         shear_range = get_rng('shrd_kt')
         mpi_range = get_rng('vmpi_kt')
         rh_range = get_rng('rhmd_pct', "{:.0f}")
+        sst_range = get_rng('nsst_degc', "{:.2f}")
 
         # Sorted Unique Categories
         unique_cats = grp['TC_Category'].dropna().unique()
@@ -89,8 +90,9 @@ def display_summary_table(final_df, unit):
             'MSLP Range': p_range,
             'Categories': cats_str,
             'Shear Range': shear_range,
-            'MPI Range': mpi_range,
-            'RH Range': rh_range
+            'RH Range': rh_range,
+            'SST Range': sst_range,
+            'MPI Range': mpi_range
         }
 
         # Observations / Cycles Count for each Platform
@@ -119,7 +121,7 @@ def display_summary_table(final_df, unit):
     group_starts = []
     current_top = None
 
-    raw_columns = ['Year', 'Storm', 'Total Cycles', 'Date Range', 'Lat Range', 'Lon Range', 'Intensity Range', 'MSLP Range', 'Categories', 'Shear Range', 'MPI Range', 'RH Range'] + [g for g in EXPECTED_GROUPS if g != 'ships_params']
+    raw_columns = ['Year', 'Storm', 'Total Cycles', 'Date Range', 'Lat Range', 'Lon Range', 'Intensity Range', 'MSLP Range', 'Categories', 'Shear Range', 'RH Range', 'SST Range', 'MPI Range',] + [g for g in EXPECTED_GROUPS if g != 'ships_params']
 
     final_cols = []
     for raw_col in raw_columns:
@@ -137,8 +139,9 @@ def display_summary_table(final_df, unit):
         elif raw_col == 'Categories': tup = ('Basic Data', 'Intensity Categories')
         # --- New SHIPS Parameters ---
         elif raw_col == 'Shear Range': tup = ('SHIPS Environment', 'Shear Range<br>(kt)')
-        elif raw_col == 'MPI Range': tup = ('SHIPS Environment', 'MPI Range<br>(kt)')
         elif raw_col == 'RH Range': tup = ('SHIPS Environment', 'Mid RH Range<br>(%)')
+        elif raw_col == 'SST Range': tup = ('SHIPS Environment', 'Navy SST Range<br>(deg C)')
+        elif raw_col == 'MPI Range': tup = ('SHIPS Environment', 'MPI Range<br>(kt)')
         # ----------------------------
         else:
             top = 'Basic Data'
@@ -190,7 +193,7 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
     final_df['Storm_Display'] = final_df.apply(lambda x: f"{x['Storm']}|||{x['Constructed_File_Name']}", axis=1)
 
     base_cols = ['Year', 'Storm_Display', 'Basin', 'Cycle_Display', 'Lat', 'Lon', 'Intensity_ms', 'MSLP_hPa', 'TC_Category']
-    ships_cols = ['incv_kt', 'dtl_km', 'shrd_kt', 'shtd_deg', 'rhmd_pct', 'vmpi_kt']
+    ships_cols = ['incv_kt', 'dtl_km', 'shrd_kt', 'shtd_deg', 'rhmd_pct', 'nsst_degc', 'nohc_kjcm2', 'vmpi_kt']
     
     # Ensure SHIPS columns exist in the dataframe to avoid errors on older DBs
     ships_present = [c for c in ships_cols if c in final_df.columns]
@@ -223,8 +226,10 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
         elif raw_col == 'dtl_km': tup = ('SHIPS Environment', 'Dist to Land<br>(km)'); fmt_map[tup] = '{:,.0f}'; numeric_cols.append(tup)
         elif raw_col == 'shrd_kt': tup = ('SHIPS Environment', 'Shear Mag<br>(kt)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
         elif raw_col == 'shtd_deg': tup = ('SHIPS Environment', 'Shear Dir<br>(deg)'); fmt_map[tup] = '{:,.0f}'; numeric_cols.append(tup)
-        elif raw_col == 'rhmd_pct': tup = ('SHIPS Environment', 'Mid RH<br>(%)'); fmt_map[tup] = '{:,.0f}'; numeric_cols.append(tup)
-        elif raw_col == 'vmpi_kt': tup = ('SHIPS Environment', 'MPI<br>(kt)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
+        elif raw_col == 'rhmd_pct': tup = ('SHIPS Environment', 'Mid-Lev RH<br>(%)'); fmt_map[tup] = '{:,.0f}'; numeric_cols.append(tup)
+        elif raw_col == 'nsst_degc': tup = ('SHIPS Environment', 'Navy SST<br>(deg C)'); fmt_map[tup] = '{:,.2f}'; numeric_cols.append(tup)
+        elif raw_col == 'nohc_kjcm2': tup = ('SHIPS Environment', 'Navy Ocn Heat Cont<br>(kJ/cm²)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
+        elif raw_col == 'vmpi_kt': tup = ('SHIPS Environment', 'Max Pot Int<br>(kt)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
         # ----------------------------
         else:
             top = 'Basic Data'

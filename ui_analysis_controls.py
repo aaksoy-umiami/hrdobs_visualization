@@ -66,7 +66,7 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
     with st.sidebar.container(border=True):
         st.markdown("### 📈 Plot Variable")
         sel_group = st.selectbox(
-            "Select Active Group to Plot", available_groups,
+            "Select Aircraft/Platform to Plot", available_groups,
             key='a_sel_group'
         )
 
@@ -82,7 +82,7 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
         is_2d_hist = (analysis_type == "Histogram Analysis (2D)")
 
         label_1 = "First Variable" if is_scatter else ("Primary Variable" if is_2d_hist else "Variable")
-        label_2 = "Second Variable" if is_scatter else ("Secondary Variable" if is_2d_hist else "Coordinate Variable")
+        label_2 = "Second Variable" if is_scatter else ("Secondary Variable" if is_2d_hist else "Variable (not active for 1D plots)")
 
         base_vars  = plotter.get_plottable_variables(sel_group, exclude_vectors=True)
         coord_vars = plotter.get_coordinate_variables(sel_group)

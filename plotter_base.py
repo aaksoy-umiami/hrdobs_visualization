@@ -289,6 +289,13 @@ class StormPlotterBase:
     def _get_var_display_name(self, group_name, variable):
         if variable.lower() == 'time':
             return "Time (relative to cycle center)"
+            
+        # 1. Try to get the explicit display name from your config first
+        var_conf = GLOBAL_VAR_CONFIG.get(variable.lower(), {})
+        if 'display_name' in var_conf:
+            return var_conf['display_name']
+
+        # 2. Fall back to HDF5 metadata
         meta      = self.var_attrs.get(group_name, {}).get(variable, {})
         long_name = decode_metadata(meta.get('long_name', ''))
 
@@ -298,6 +305,14 @@ class StormPlotterBase:
                 long_name = base_var.replace('_', ' ').title() + " Error"
             else:
                 long_name = variable.replace('_', ' ').title()
+        else:
+            # Enforce Title Case on metadata long names, handling acronyms like "3D"
+            words = long_name.split()
+            long_name = ' '.join(
+                word if word.isupper() or any(char.isdigit() for char in word) 
+                else word.capitalize() 
+                for word in words
+            )
 
         units = decode_metadata(meta.get('units', ''))
         if units:

@@ -176,16 +176,20 @@ class CartesianMixin:
                 if cen_vector_dir == "North":
                     motion_dir = 0.0
                 elif cen_vector_dir == "Storm Motion":
-                    motion_str = str(self.metadata.get('info', {}).get('storm_motion', ''))
-                    nums = re.findall(r'[-+]?\d*\.?\d+', motion_str)
-                    if len(nums) >= 2:
-                        motion_dir = float(nums[1])
+                    # FIX 1: Use the new split metadata key
+                    sm_heading = self.metadata.get('info', {}).get('storm_motion_heading_deg')
+                    if sm_heading is not None:
+                        try:
+                            motion_dir = float(str(sm_heading).strip("[]b'\" "))
+                        except Exception:
+                            st.toast("⚠️ Could not parse storm direction for vector. Falling back to X.", icon="⚠️")
                     else:
-                        st.toast("⚠️ Could not parse storm direction for vector. Falling back to X.", icon="⚠️")
+                        st.toast("⚠️ Storm motion missing from metadata. Falling back to X.", icon="⚠️")
                 elif cen_vector_dir == "850-200 hPa Shear":
                     if 'ships_params' in self.data and 'shtd_deg' in self.data['ships_params'].columns:
                         motion_dir = float(self.data['ships_params']['shtd_deg'].iloc[0])
-                elif cen_vector_dir == "Vortex-Removed Shear":
+                elif cen_vector_dir == "Vortex-Removed 850-200 hPa Shear":
+                    # FIX 2: Corrected the string mismatch to align with UI dropdown
                     if 'ships_params' in self.data and 'sddc_deg' in self.data['ships_params'].columns:
                         motion_dir = float(self.data['ships_params']['sddc_deg'].iloc[0])
 
@@ -268,18 +272,26 @@ class CartesianMixin:
 
         if is_3d and z_vals is not None:
             
-            # Determine clean Z-axis title based on the column name
+            # Determine clean Z-axis title based on the column name and metadata units
             z_ax_title = z_col
             if z_col:
-                if any(p in z_col.lower() for p in ['pres', 'pressure', 'p']):
-                    z_ax_title = "Pressure"
+                is_pres = any(p in z_col.lower() for p in ['pres', 'pressure', 'p'])
+                z_meta = self.var_attrs.get(group_name, {}).get(z_col, {})
+                z_units = decode_metadata(z_meta.get('units', 'hPa' if is_pres else 'm'))
+                
+                # Catch raw Pascals and display as hPa since we scale it down elsewhere
+                if is_pres and 'Pa' in z_units and 'hPa' not in z_units:
+                    z_units = 'hPa'
+                    
+                if is_pres:
+                    z_ax_title = f"Pressure ({z_units})"
                 elif any(h in z_col.lower() for h in ['height', 'ght', 'altitude', 'elev']):
-                    z_ax_title = "Height"
+                    z_ax_title = f"Height ({z_units})"
 
             scene_dict = dict(
                 aspectmode='manual',
                 aspectratio=dict(x=1, y=1, z=z_ratio),
-                xaxis_title="Longitude", yaxis_title="Latitude", zaxis_title=z_ax_title,
+                xaxis_title="Longitude (deg)", yaxis_title="Latitude (deg)", zaxis_title=z_ax_title,
                 xaxis=dict(range=x_range, nticks=20), yaxis=dict(range=y_range, nticks=20),
                 zaxis=dict(range=z_range, nticks=10)
             )
@@ -329,7 +341,7 @@ class CartesianMixin:
                 autosize=False,
                 showlegend=False,
                 xaxis=dict(
-                    title='Longitude',
+                    title='Longitude (deg)',
                     tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
                     range=x_range,
                     showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,
@@ -337,7 +349,7 @@ class CartesianMixin:
                     constrain='domain',
                 ),
                 yaxis=dict(
-                    title='Latitude',
+                    title='Latitude (deg)',
                     tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
                     range=y_range,
                     showgrid=True, gridcolor=CLR_PLOT_GRID, nticks=TARGET_PLOT_TICKS,

@@ -116,7 +116,7 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
         st.markdown("### 📈 Plot Variable")
 
         sel_group = st.selectbox(
-            "Select Active Group to Plot", available_groups,
+            "Select Aircraft/Platform/Track to Plot", available_groups,
             key='v_sel_group', on_change=reset_group_dependencies
         )
 
@@ -138,6 +138,10 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
         vars_list = plotter.get_plottable_variables(
             sel_group, active_z_col=exclude_col or rh_z_col, exclude_vectors=False
         )
+
+        # --- Filter out 3D variables for horizontal projections ---
+        if plot_type in ["Horizontal Cartesian", "Horizontal Storm-Relative"]:
+            vars_list = [v for v in vars_list if "3d" not in v.lower()]
 
         variable = plot_var = color_scale = None
 
@@ -376,7 +380,7 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
         with r1:
             sidebar_label("Vert. Aspect Ratio:", enabled=is_3d)
         with r2:
-            init_state('v_3d_ratio', 0.3)
+            init_state('v_3d_ratio', 0.75)
             z_ratio = st.slider("VAR", min_value=0.05, max_value=1.5, step=0.05, key='v_3d_ratio', disabled=not is_3d, label_visibility="collapsed")
 
     return plot_type, sr_up_convention, sr_track_grp, is_3d, target_col_3d, z_ratio, can_do_3d, show_cen, cen_mode, cen_vector_dir
