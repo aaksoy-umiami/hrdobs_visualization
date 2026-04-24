@@ -156,54 +156,27 @@ def load_data_from_h5(file_bytes):
         except: return None
         
     def _find_center_in_attrs(attrs):
-        if 'center_from_tc_vitals' in attrs:
-            raw_val = attrs['center_from_tc_vitals']
-            if hasattr(raw_val, '__iter__') and not isinstance(raw_val, (str, bytes)):
-                try:
-                    return float(raw_val[0]), float(raw_val[1])
-                except (ValueError, TypeError, IndexError):
-                    pass
-            val_str = _safe_val(raw_val).upper()
-            m = re.search(r'\[?\s*([-+]?\d*\.?\d+)[\s,]+([-+]?\d*\.?\d+)\s*\]?', val_str)
-            if m:
-                lat_val = float(m.group(1))
-                lon_val = float(m.group(2))
-                if lon_val > 180: lon_val -= 360
-                if GLOBAL_LAT_MIN <= lat_val <= GLOBAL_LAT_MAX and GLOBAL_LON_MIN <= lon_val <= GLOBAL_LON_MAX:
-                    return lat_val, lon_val
-
-            coords = []
-            used = set()
-            for m in re.finditer(r'([-+]?\d+(?:\.\d+)?)\s*([NSEW])|([NSEW])\s*([-+]?\d+(?:\.\d+)?)', val_str):
-                if m.start() in used: continue
-                used.add(m.start())
-                if m.group(1): coords.append((float(m.group(1)), m.group(2)))
-                else:          coords.append((float(m.group(4)), m.group(3)))
-            if len(coords) >= 2:
-                lat_val = coords[0][0] * (-1 if coords[0][1] == 'S' else 1)
-                lon_val = coords[1][0] * (-1 if coords[1][1] == 'W' else 1)
-                if lon_val > 180: lon_val -= 360
-                if GLOBAL_LAT_MIN <= lat_val <= GLOBAL_LAT_MAX and GLOBAL_LON_MIN <= lon_val <= GLOBAL_LON_MAX:
-                    return lat_val, lon_val
-                
+        """Calculates the storm center purely from the geospatial bounding box midpoint."""
         try:
             attr_map = {k.lower(): k for k in attrs.keys()}
             def get_bound(key_name):
                 if key_name in attr_map: return _safe_float(attrs[attr_map[key_name]])
                 return None
+                
             lat_min = get_bound('geospatial_lat_min')
             lat_max = get_bound('geospatial_lat_max')
             lon_min = get_bound('geospatial_lon_min')
             lon_max = get_bound('geospatial_lon_max')
+            
             if all(v is not None for v in [lat_min, lat_max, lon_min, lon_max]):
                 lat_avg = (lat_min + lat_max) / 2.0
                 lon_avg = (lon_min + lon_max) / 2.0
                 if lon_avg > 180: lon_avg -= 360
+                
                 if GLOBAL_LAT_MIN <= lat_avg <= GLOBAL_LAT_MAX and GLOBAL_LON_MIN <= lon_avg <= GLOBAL_LON_MAX:
                     return lat_avg, lon_avg
         except Exception:
             pass
-
         return None
 
     with tempfile.NamedTemporaryFile(delete=False, suffix='.hdf5') as tmp_file:
@@ -218,10 +191,12 @@ def load_data_from_h5(file_bytes):
 
     data_dict, track_df = {}, pd.DataFrame()
     var_attrs = {} 
+    
     metadata = {'storm_center': None, 'bounds': [], 'info': {}}
 
     for k, v in f.attrs.items():
         metadata['info'][k] = _safe_val(v)
+        
     metadata['storm_center'] = _find_center_in_attrs(f.attrs)
 
     for key in f.keys():

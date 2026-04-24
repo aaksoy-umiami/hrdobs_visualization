@@ -307,11 +307,52 @@ class StormRelativeMixin:
                 z_vals_hover = z_vals_hover / 100.0
                 z_unit_hover = "hPa"
         
+        # --- NEW: Observation Error / Base Value Extraction ---
+        var_lower = variable.lower()
+        is_error_var = var_lower.endswith('err') or var_lower.endswith('_err') or var_lower.endswith('error') or var_lower.endswith('_error')
+        
+        err_vals = np.full(len(plot_df), np.nan)
+        base_vals = np.full(len(plot_df), np.nan)
+        err_name_hover = ""
+        base_name_hover = ""
+
+        if is_error_var:
+            base_cands = [
+                var_lower[:-3] if var_lower.endswith('err') else None,
+                var_lower[:-4] if var_lower.endswith('_err') else None,
+                var_lower[:-5] if var_lower.endswith('error') else None,
+                var_lower[:-6] if var_lower.endswith('_error') else None
+            ]
+            if var_lower == 'wspd_hz_comp_err': base_cands.append('wspd_hz_comp')
+            if var_lower == 'wspd_3d_comp_err': base_cands.append('wspd_3d_comp')
+            base_cands = [c for c in base_cands if c]
+
+            base_col = next((cols_lower[c] for c in base_cands if c in cols_lower), None)
+            if base_col and base_col in plot_df.columns:
+                base_vals = plot_df[base_col].values.astype(float)
+                base_name_hover = self._get_var_display_name(group_name, base_col)
+        else:
+            err_cands = [f"{var_lower}err", f"{var_lower}_err", f"{var_lower}_error", f"{var_lower}error"]
+            if var_lower in ['wspd_hz_comp', 'wind_vec_hz']: err_cands.append('wspd_hz_comp_err')
+            if var_lower in ['wspd_3d_comp', 'wind_vec_3d']: err_cands.append('wspd_3d_comp_err')
+            
+            err_col = next((cols_lower[c] for c in err_cands if c in cols_lower), None)
+            if err_col and err_col in plot_df.columns:
+                err_vals = plot_df[err_col].values.astype(float)
+                err_name_hover = self._get_var_display_name(group_name, err_col)
+
         offset = self.metadata.get('time_offset_seconds', 0.0)
-        def make_sr_hover(r, a, v, t, z):
+        def make_sr_hover(r, a, v, t, z, err_v, base_v):
             parts = [f"Range: {r:.1f} km", f"Az: {a:.1f}°"]
             if not pd.isna(v):
                 parts.append(f"{cb_title}: {v:,.2f}")
+                
+            # Append Error or Base Value
+            if not pd.isna(err_v):
+                parts.append(f"{err_name_hover}: {err_v:,.2f}")
+            elif not pd.isna(base_v):
+                parts.append(f"{base_name_hover}: {base_v:,.2f}")
+
             if not pd.isna(t):
                 from datetime import datetime, timezone
                 if t > 1.9e13:
@@ -326,7 +367,7 @@ class StormRelativeMixin:
             return "<br>".join(parts)
 
         t_vals = plot_df[time_col].values
-        hover_text = [make_sr_hover(r, a, v, t, z) for r, a, v, t, z in zip(range_km, azimuth_deg, plot_df[variable].values, t_vals, z_vals_hover)]
+        hover_text = [make_sr_hover(r, a, v, t, z, ev, bv) for r, a, v, t, z, ev, bv in zip(range_km, azimuth_deg, plot_df[variable].values, t_vals, z_vals_hover, err_vals, base_vals)]
 
         is_vector = variable.lower() in ['wind_vec_hz', 'wind_vec_3d']
         
@@ -373,6 +414,11 @@ class StormRelativeMixin:
             ))
 
         if show_center:
+            # --- 1. Simple Tooltip Setup ---
+            hover_parts = [
+                "<b>Storm Center</b>"
+            ]
+
             vector_dir = None
             if cen_mode == "Vector With Dir:":
                 if cen_vector_dir == "North":
@@ -393,6 +439,17 @@ class StormRelativeMixin:
                     if 'ships_params' in self.data and 'sddc_deg' in self.data['ships_params'].columns:
                         vector_dir = float(self.data['ships_params']['sddc_deg'].iloc[0])
 
+            # --- 2. Append Vector Info if Applicable ---
+            if vector_dir is not None:
+                hover_parts.append(f"Vector: {cen_vector_dir}")
+                hover_parts.append(f"Absolute Dir: {vector_dir:.1f}°")
+                if up_convention != "Relative to North" and mean_heading is not None:
+                    rel_dir = (vector_dir - mean_heading) % 360
+                    hover_parts.append(f"Relative Dir: {rel_dir:.1f}°")
+
+            center_hover_text = "<br>".join(hover_parts)
+
+            # --- 3. Draw Traces with Tooltips ---
             if vector_dir is not None:
                 # Rotate the arrow based on our new up_convention
                 if up_convention != "Relative to North" and mean_heading is not None:
@@ -421,7 +478,8 @@ class StormRelativeMixin:
                     y=[0, tip_y, w1_y, tip_y, w2_y],
                     mode='lines',
                     line=dict(color=CLR_PRIMARY, width=2),
-                    showlegend=False, hoverinfo='skip'
+                    showlegend=False, 
+                    hoverinfo='text', hovertext=[center_hover_text] * 5
                 ))
             else:
                 fig.add_trace(go.Scatter(
@@ -430,8 +488,8 @@ class StormRelativeMixin:
                                 line=dict(width=2)),
                     text=['TC'], textposition='top center',
                     textfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),
-                    showlegend=False, hoverinfo='text',
-                    hovertext=['Storm center']
+                    showlegend=False, 
+                    hoverinfo='text', hovertext=[center_hover_text]
                 ))
 
         # Dynamic Axis Titles Based on Convention

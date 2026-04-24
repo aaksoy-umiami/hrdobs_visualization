@@ -21,7 +21,7 @@ from config import (
     DOMAIN_LAT_MIN, DOMAIN_LAT_MAX, DOMAIN_LON_MIN, DOMAIN_LON_MAX
 )
 
-def _prep_plot_data(df: pd.DataFrame, unit: str):
+def _prep_plot_data(df: pd.DataFrame, unit: str, is_bg_tracks: bool = False):
     """Prepares the main plot_df and the clipped map_df."""
     plot_df = df.copy()
 
@@ -49,12 +49,17 @@ def _prep_plot_data(df: pd.DataFrame, unit: str):
         # Negate Longitude for standard Western Hemisphere mapping
         plot_df['Lon_Plot'] = -plot_df['Lon'].abs()
         
-        mask = (
-            (plot_df['Lat'] >= DOMAIN_LAT_MIN) & (plot_df['Lat'] <= DOMAIN_LAT_MAX) &
-            (plot_df['Lon_Plot'] >= DOMAIN_LON_MIN) & (plot_df['Lon_Plot'] <= DOMAIN_LON_MAX)
-        )
-        map_df = plot_df[mask].dropna(subset=['Lat', 'Lon_Plot']).copy()
-        
+        if not is_bg_tracks:
+            # Restore original hardcoded DOMAIN bounds for the clip mask
+            mask = (
+                (plot_df['Lat'] >= DOMAIN_LAT_MIN) & (plot_df['Lat'] <= DOMAIN_LAT_MAX) &
+                (plot_df['Lon_Plot'] >= DOMAIN_LON_MIN) & (plot_df['Lon_Plot'] <= DOMAIN_LON_MAX)
+            )
+            map_df = plot_df[mask].dropna(subset=['Lat', 'Lon_Plot']).copy()
+        else:
+            # For background tracks, keep all points so lines aren't broken by boundaries
+            map_df = plot_df.dropna(subset=['Lat', 'Lon_Plot']).copy()
+            
         if 'Year' in map_df.columns and 'Storm' in map_df.columns and 'Cycle_Raw' in map_df.columns:
             map_df = map_df.sort_values(by=['Year', 'Storm', 'Cycle_Raw'])
     else:
@@ -62,10 +67,14 @@ def _prep_plot_data(df: pd.DataFrame, unit: str):
         
     return plot_df, map_df
 
-def _build_category_map(map_df: pd.DataFrame, unit: str) -> go.Figure:
+def _build_category_map(map_df: pd.DataFrame, unit: str, bg_df: pd.DataFrame = None) -> go.Figure:
     """Builds the geographic scatter map colored by category."""
     fig = go.Figure()
     
+    if bg_df is None:
+        bg_df = map_df
+        
+    # Restore original fixed domain bounds
     domain_bounds = {
         'lat_min': DOMAIN_LAT_MIN, 'lat_max': DOMAIN_LAT_MAX, 
         'lon_min': DOMAIN_LON_MIN, 'lon_max': DOMAIN_LON_MAX
@@ -76,16 +85,16 @@ def _build_category_map(map_df: pd.DataFrame, unit: str) -> go.Figure:
         bm_trace.line.color = 'rgba(100, 100, 100, 0.6)'
         fig.add_trace(bm_trace)
 
-    # Layer 1: Connecting Track Lines
-    for storm_id in map_df['Storm_ID'].unique():
-        storm_data = map_df[map_df['Storm_ID'] == storm_id]
+    # Layer 1: Connecting Track Lines (from bg_df bypassing the geographic filter)
+    for storm_id in bg_df['Storm_ID'].unique():
+        storm_data = bg_df[bg_df['Storm_ID'] == storm_id]
         fig.add_trace(go.Scatter(
             x=storm_data['Lon_Plot'], y=storm_data['Lat'], mode='lines',
             line=dict(width=1.5, color='rgba(100, 100, 100, 0.4)'),
             showlegend=False, hoverinfo='skip'
         ))
 
-    # Layer 2: Category Markers
+    # Layer 2: Category Markers (from the fully filtered map_df)
     existing_cats = set(map_df['TC_Category'].unique())
     current_cats = [c for c in CAT_ORDER if c in existing_cats] + [c for c in existing_cats if c not in CAT_ORDER]
 
@@ -110,16 +119,19 @@ def _build_category_map(map_df: pd.DataFrame, unit: str) -> go.Figure:
         width=880,
         title={'text': "Geographic Distribution by Intensity Category", 'x': 0.5, 'xanchor': 'center', 'xref': 'paper'},
         margin=PLOT_MARGINS_MAP, paper_bgcolor=CLR_PLOT_BG, plot_bgcolor=CLR_PLOT_BG, height=PLOT_HEIGHT_MAP,
+        
+        # Restore fixed axis limits
         xaxis=dict(title='Longitude', range=[DOMAIN_LON_MIN, DOMAIN_LON_MAX], showgrid=True, gridcolor='rgba(200, 200, 200, 0.4)',
                    zeroline=False, dtick=10, showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
                    tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),constrain='domain'),
         yaxis=dict(title='Latitude', range=[DOMAIN_LAT_MIN, DOMAIN_LAT_MAX], showgrid=True, gridcolor='rgba(200, 200, 200, 0.4)',
                    zeroline=False, dtick=10, showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
                    scaleanchor='x', scaleratio=1, constrain='domain', tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY)),
+                   
         legend=dict(
             title=dict(text='Intensity Category'), 
-            yanchor="middle", y=0.5,      # Centers the legend vertically
-            xanchor="left", x=1.02,       # Places the legend just outside the right edge of the plot
+            yanchor="middle", y=0.5,
+            xanchor="left", x=1.02,
             bgcolor="rgba(255, 255, 255, 0.85)", 
             bordercolor="black", 
             borderwidth=1
@@ -307,7 +319,7 @@ def _build_observations_bar_chart(plot_df: pd.DataFrame) -> go.Figure:
     fig_obs.add_shape(type='line', xref='paper', yref='paper', x0=0, x1=1, y0=0, y1=0, line=dict(color=CLR_PRIMARY, width=2))
     return fig_obs
 
-def render_explorer_summary_plots(df: pd.DataFrame, unit: str):
+def render_explorer_summary_plots(df: pd.DataFrame, unit: str, df_no_geo: pd.DataFrame = None):
     """
     Renders an expandable section containing summary visualizations 
     for the currently filtered Dataset Explorer inventory.
@@ -318,6 +330,12 @@ def render_explorer_summary_plots(df: pd.DataFrame, unit: str):
             return
 
         plot_df, map_df = _prep_plot_data(df, unit)
+        
+        # Prepare the background dataframe
+        if df_no_geo is not None:
+            _, bg_map_df = _prep_plot_data(df_no_geo, unit, is_bg_tracks=True)
+        else:
+            bg_map_df = map_df
 
         st.markdown(
             "<div style='text-align: center; margin-bottom: 20px; color: #666; font-size: 0.95em;'>"
@@ -332,12 +350,11 @@ def render_explorer_summary_plots(df: pd.DataFrame, unit: str):
         if map_df.empty:
             st.info("No valid coordinates fall within the map domain.")
         else:
-            fig_map = _build_category_map(map_df, unit)
+            # Pass the background dataframe in to draw the tracks
+            fig_map = _build_category_map(map_df, unit, bg_df=bg_map_df)
             
-            # Wrap the map in columns to keep it centered on the page
             col_left, col_center, col_right = st.columns([1, 4, 1])
             with col_center:
-                # Use the new Streamlit API to prevent stretching
                 st.plotly_chart(fig_map, width="content")
 
         # =====================================================================

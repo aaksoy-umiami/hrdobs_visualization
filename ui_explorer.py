@@ -78,6 +78,19 @@ def render_explorer_tab():
 
         final_df['Lon'] = final_df['Lon'].abs()
 
+        # --- Create un-geographically-filtered dataframe for background lines ---
+        # 1. Get the base mask ignoring geography
+        df_no_geo_mask = get_dropdown_mask(db_df, ['Geography'], has_vars)
+        df_no_geo_base = db_df[df_no_geo_mask]
+        
+        # 2. Get the full tracks for any storm that survived the non-geographic filters
+        if not df_no_geo_base.empty:
+            storm_keys = df_no_geo_base[['Storm', 'Year']].drop_duplicates()
+            df_no_geo = db_df.merge(storm_keys, on=['Storm', 'Year'], how='inner').copy()
+            df_no_geo['Lon'] = df_no_geo['Lon'].abs()
+        else:
+            df_no_geo = pd.DataFrame()
+
         spacer('lg')
 
         # ------------------------------------------------------------------
@@ -89,7 +102,8 @@ def render_explorer_tab():
         # ------------------------------------------------------------------
         # 2. View Summary Graphics of Filtered Results
         # ------------------------------------------------------------------
-        render_explorer_summary_plots(final_df, intent.unit)
+        # Pass the new df_no_geo to the plot renderer
+        render_explorer_summary_plots(final_df, intent.unit, df_no_geo)
 
         # ------------------------------------------------------------------
         # 3. Results Count

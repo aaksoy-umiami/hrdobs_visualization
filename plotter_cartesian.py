@@ -68,12 +68,8 @@ class CartesianMixin:
         is_vector = variable.lower() in ['wind_vec_hz', 'wind_vec_3d']
         z_vals = plot_df[z_col].values.copy() if (is_3d and z_col and z_col in plot_df.columns) else None
 
-        # =========================================================================
-        # REFACTORED: 1 Line replaces ~70 lines of color math!
-        # =========================================================================
         color_array, cmap, cmin, cmax, cmid, cb_tickvals, cb_ticktext, cb_title, display_name, base_color_array = \
             self._prepare_colorscale(group_name, variable, plot_df, color_scale, custom_colorscale, is_track)
-        # =========================================================================
 
         # --- HOVER DATA EXTRACTION ---
         t_col = cols_lower.get('time')
@@ -91,12 +87,53 @@ class CartesianMixin:
                 z_vals_hover = z_vals_hover / 100.0
                 z_unit_hover = "hPa"
 
+        # --- NEW: Observation Error / Base Value Extraction ---
+        var_lower = variable.lower()
+        is_error_var = var_lower.endswith('err') or var_lower.endswith('_err') or var_lower.endswith('error') or var_lower.endswith('_error')
+        
+        err_vals = np.full(len(plot_df), np.nan)
+        base_vals = np.full(len(plot_df), np.nan)
+        err_name_hover = ""
+        base_name_hover = ""
+
+        if is_error_var:
+            base_cands = [
+                var_lower[:-3] if var_lower.endswith('err') else None,
+                var_lower[:-4] if var_lower.endswith('_err') else None,
+                var_lower[:-5] if var_lower.endswith('error') else None,
+                var_lower[:-6] if var_lower.endswith('_error') else None
+            ]
+            if var_lower == 'wspd_hz_comp_err': base_cands.append('wspd_hz_comp')
+            if var_lower == 'wspd_3d_comp_err': base_cands.append('wspd_3d_comp')
+            base_cands = [c for c in base_cands if c]
+
+            base_col = next((cols_lower[c] for c in base_cands if c in cols_lower), None)
+            if base_col and base_col in plot_df.columns:
+                base_vals = plot_df[base_col].values.astype(float)
+                base_name_hover = self._get_var_display_name(group_name, base_col)
+        else:
+            err_cands = [f"{var_lower}err", f"{var_lower}_err", f"{var_lower}_error", f"{var_lower}error"]
+            if var_lower in ['wspd_hz_comp', 'wind_vec_hz']: err_cands.append('wspd_hz_comp_err')
+            if var_lower in ['wspd_3d_comp', 'wind_vec_3d']: err_cands.append('wspd_3d_comp_err')
+            
+            err_col = next((cols_lower[c] for c in err_cands if c in cols_lower), None)
+            if err_col and err_col in plot_df.columns:
+                err_vals = plot_df[err_col].values.astype(float)
+                err_name_hover = self._get_var_display_name(group_name, err_col)
+
         offset = self.metadata.get('time_offset_seconds', 0.0)
-        def make_hover(v, t, z):
+        def make_hover(v, t, z, err_v, base_v):
             parts = []
             if not pd.isna(v):
                 if is_vector: parts.append(f"Magnitude: {v:,.1f}")
                 else:         parts.append(f"{display_name}: {v:,.2f}")
+            
+            # Append Error or Base Value
+            if not pd.isna(err_v):
+                parts.append(f"{err_name_hover}: {err_v:,.2f}")
+            elif not pd.isna(base_v):
+                parts.append(f"{base_name_hover}: {base_v:,.2f}")
+
             if not pd.isna(t):
                 from datetime import datetime, timezone
                 if t > 1.9e13:
@@ -108,7 +145,7 @@ class CartesianMixin:
             if not pd.isna(z): parts.append(f"{z_name_hover}: {z:,.1f} {z_unit_hover}".strip())
             return "<br>".join(parts) if parts else "NaN"
 
-        text_arr = [make_hover(v, t, z) for v, t, z in zip(base_color_array, t_vals, z_vals_hover)]
+        text_arr = [make_hover(v, t, z, ev, bv) for v, t, z, ev, bv in zip(base_color_array, t_vals, z_vals_hover, err_vals, base_vals)]
 
         fig = go.Figure()
 
@@ -171,12 +208,17 @@ class CartesianMixin:
             clat, clon = self.metadata['storm_center']
             use_3d     = is_3d and (z_vals is not None)
 
+            # --- 1. Simple Tooltip Setup ---
+            hover_parts = [
+                "<b>Storm Center</b>",
+                f"Lat: {clat:.2f}, Lon: {clon:.2f}"
+            ]
+
             motion_dir = None
             if cen_mode == "Vector With Dir:":
                 if cen_vector_dir == "North":
                     motion_dir = 0.0
                 elif cen_vector_dir == "Storm Motion":
-                    # FIX 1: Use the new split metadata key
                     sm_heading = self.metadata.get('info', {}).get('storm_motion_heading_deg')
                     if sm_heading is not None:
                         try:
@@ -189,10 +231,17 @@ class CartesianMixin:
                     if 'ships_params' in self.data and 'shtd_deg' in self.data['ships_params'].columns:
                         motion_dir = float(self.data['ships_params']['shtd_deg'].iloc[0])
                 elif cen_vector_dir == "Vortex-Removed 850-200 hPa Shear":
-                    # FIX 2: Corrected the string mismatch to align with UI dropdown
                     if 'ships_params' in self.data and 'sddc_deg' in self.data['ships_params'].columns:
                         motion_dir = float(self.data['ships_params']['sddc_deg'].iloc[0])
 
+            # --- 2. Append Vector Info if Applicable ---
+            if motion_dir is not None:
+                hover_parts.append(f"Vector: {cen_vector_dir}")
+                hover_parts.append(f"Direction: {motion_dir:.1f}°")
+
+            center_hover_text = "<br>".join(hover_parts)
+
+            # --- 3. Draw Traces with Tooltips ---
             if motion_dir is not None:
                 theta = math.radians(90 - motion_dir)
 
@@ -221,23 +270,27 @@ class CartesianMixin:
                     fig.add_trace(go.Scatter3d(
                         x=[clon], y=[clat], z=[z_bottom], mode='markers',
                         marker=dict(symbol='circle', size=6, color='black'),
-                        name='Center Location', showlegend=False, hoverinfo='skip'
+                        name='Center Location', showlegend=False, 
+                        hoverinfo='text', hovertext=[center_hover_text]
                     ))
                     fig.add_trace(go.Scatter3d(
                         x=a_lon, y=a_lat, z=[z_bottom] * 5, mode='lines',
                         line=dict(color='black', width=3),
-                        name='Storm Motion', showlegend=False, hoverinfo='skip'
+                        name='Storm Motion', showlegend=False, 
+                        hoverinfo='text', hovertext=[center_hover_text] * 5
                     ))
                 else:
                     fig.add_trace(go.Scatter(
                         x=[clon], y=[clat], mode='markers',
                         marker=dict(symbol='circle', size=10, color='black'),
-                        name='Center Location', showlegend=False, hoverinfo='skip'
+                        name='Center Location', showlegend=False, 
+                        hoverinfo='text', hovertext=[center_hover_text]
                     ))
                     fig.add_trace(go.Scatter(
                         x=a_lon, y=a_lat, mode='lines',
                         line=dict(color='black', width=2.5),
-                        name='Storm Motion', showlegend=False, hoverinfo='skip'
+                        name='Storm Motion', showlegend=False, 
+                        hoverinfo='text', hovertext=[center_hover_text] * 5
                     ))
             else:
                 if use_3d:
@@ -247,14 +300,16 @@ class CartesianMixin:
                         x=[clon], y=[clat], z=[z_bottom], mode='markers',
                         marker=dict(symbol='x', size=5, color='black',
                                     line=dict(color='black', width=1.5)),
-                        name='Center', showlegend=False, hoverinfo='skip'
+                        name='Center', showlegend=False, 
+                        hoverinfo='text', hovertext=[center_hover_text]
                     ))
                 else:
                     fig.add_trace(go.Scatter(
                         x=[clon], y=[clat], mode='markers',
                         marker=dict(symbol='x', size=12, color='black',
                                     line=dict(color='black', width=1.5)),
-                        name='Center', showlegend=False, hoverinfo='skip'
+                        name='Center', showlegend=False, 
+                        hoverinfo='text', hovertext=[center_hover_text]
                     ))
 
         nice_title = self._format_title(group_name, variable, constraint_lbl)
