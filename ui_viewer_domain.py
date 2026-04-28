@@ -80,7 +80,7 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                 init_state('v_sr_max_range', sr_default_max)
                 st.session_state.v_sr_max_range = float(np.clip(st.session_state.v_sr_max_range, 25.0, sr_slider_max))
 
-            c1, c2 = st.columns([0.7, 2.0])
+            c1, c2 = st.columns([1.0, 1.7])
             with c1: sidebar_label('Max Range (km):', size='label')
             with c2:
                 # Replaced raw slider with safe_slider to automatically prevent the 25.0 bounds collision
@@ -95,7 +95,7 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
             lon_range = (_gd_lon[0], _gd_lon[1])
 
         else:
-            c1, c2, c3, c4 = st.columns([0.7, 2.0, 0.7, 2.0])
+            c1, c2, c3, c4 = st.columns([1.1, 1.6, 1.1, 1.6])
             with c1: sidebar_label('Lat (deg):', size='label')
             with c2:
                 _s_lat_min, _s_lat_max = st.session_state.get('_slider_lat_bounds', (_gd_lat[0], _gd_lat[1]))
