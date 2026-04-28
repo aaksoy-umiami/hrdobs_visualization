@@ -126,7 +126,7 @@ def _render_about():
     for highly efficient machine-learning applications.
                 
     The dataset includes dropsonde profiles, flight-level observations, SFMR surface wind
-    measurements, and Tail Doppler Radar superobservations. Thse aircraft-based measurements are further accompanied
+    measurements, and Tail Doppler Radar superobservations. These aircraft-based measurements are further accompanied
     by various TC track datasets and Statistical Hurricane Intensity Prediction Scheme (SHIPS) TC environment parameters.
     
     """)
