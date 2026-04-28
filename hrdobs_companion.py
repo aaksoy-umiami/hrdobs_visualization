@@ -21,24 +21,22 @@ except ImportError:
 setup_page()
 render_header()
 
-# === VIEWPORT WIDTH DETECTION ===
-if _JS_EVAL_AVAILABLE and 'viewport_width' not in st.session_state:
+# === MOBILE DEVICE DETECTION ===
+if _JS_EVAL_AVAILABLE and 'is_mobile_device' not in st.session_state:
     try:
-        vw = streamlit_js_eval(
-            js_expressions="window.innerWidth",
-            key="viewport_width_js",
+        # Checks the user agent for common mobile OS/browser signatures
+        is_mob = streamlit_js_eval(
+            js_expressions="/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)",
+            key="is_mobile_js",
             want_output=True,
         )
-        if vw is not None:
-            st.session_state.viewport_width = vw
+        if is_mob is not None:
+            st.session_state.is_mobile_device = is_mob
     except Exception:
-        st.session_state.viewport_width = None
+        st.session_state.is_mobile_device = False
 
 def _is_mobile():
-    vw = st.session_state.get("viewport_width", None)
-    if vw is None:
-        return False
-    return vw < 768
+    return st.session_state.get("is_mobile_device", False)
 
 # === MOBILE WARNING (one-time dialog) ===
 @st.dialog("📱 Mobile Device Detected")
