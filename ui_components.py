@@ -99,6 +99,64 @@ def multiselect_with_controls(label: str, options: list, key: str, **kwargs):
     )
 
 # ---------------------------------------------------------------------------
+# Safe Slider Wrappers
+# ---------------------------------------------------------------------------
+
+def safe_slider(label: str, min_value: float, max_value: float, key: str, **kwargs):
+    """
+    A wrapper around st.slider that guarantees the session_state value 
+    never violates the min/max bounds, preventing Streamlit exceptions.
+    """
+    # Failsafe: Ensure max is always strictly greater than min
+    if min_value >= max_value:
+        max_value = min_value + kwargs.get('step', 1.0)
+
+    # Check and sanitize current state
+    curr_val = st.session_state.get(key)
+    if curr_val is not None:
+        if isinstance(curr_val, tuple):
+            v0 = max(min_value, min(curr_val[0], max_value))
+            v1 = max(min_value, min(curr_val[1], max_value))
+            st.session_state[key] = (v0, v1) if v0 <= v1 else (min_value, max_value)
+        else:
+            st.session_state[key] = max(min_value, min(curr_val, max_value))
+            
+    return st.slider(label, min_value=min_value, max_value=max_value, key=key, **kwargs)
+
+
+def dynamic_range_slider(label: str, global_min: float, global_max: float, data_min: float, data_max: float, key: str, **kwargs):
+    """
+    Range slider that respects data bounds while remembering if the user 
+    intended to be fully 'zoomed out' at the edges. Also prevents min/max crashes.
+    """
+    # Failsafe: Ensure valid bounds
+    if data_min >= data_max:
+        data_max = data_min + kwargs.get('step', 1.0)
+        
+    last_min_key = f"_last_t_min_{key}"
+    last_max_key = f"_last_t_max_{key}"
+    
+    last_t_min = st.session_state.get(last_min_key, global_min)
+    last_t_max = st.session_state.get(last_max_key, global_max)
+    curr_val = st.session_state.get(key, (global_min, global_max))
+
+    # If user was essentially at the bounds, snap to new bounds
+    if curr_val[0] <= last_t_min + 0.1 and curr_val[1] >= last_t_max - 0.1:
+        new_val = (data_min, data_max)
+    else:
+        # Otherwise, clamp their custom selection
+        v0 = max(data_min, min(curr_val[0], data_max))
+        v1 = max(data_min, min(curr_val[1], data_max))
+        new_val = (v0, v1) if v0 <= v1 else (data_min, data_max)
+
+    # Update state
+    st.session_state[key] = new_val
+    st.session_state[last_min_key] = data_min
+    st.session_state[last_max_key] = data_max
+
+    return st.slider(label, min_value=data_min, max_value=data_max, key=key, **kwargs)
+
+# ---------------------------------------------------------------------------
 # State Management Utilities
 # ---------------------------------------------------------------------------
 

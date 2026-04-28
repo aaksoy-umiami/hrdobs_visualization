@@ -13,7 +13,7 @@ from typing import Optional, Dict
 
 from ui_viewer_file import render_file_upload_section
 from config import DEFAULT_HIST_BINS, DEFAULT_HIST_BINS_AZIMUTH, DEFAULT_HIST_BINS_RADIAL, AVAILABLE_COLORSCALES, GLOBAL_VAR_CONFIG, COLORSCALE_NAMES
-from ui_components import sidebar_label, section_divider, init_state, sync_namespace
+from ui_components import sidebar_label, section_divider, init_state, sync_namespace, safe_slider
 from plotter import StormPlotter
 from ui_layout import FS_BODY
 
@@ -205,7 +205,8 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
 
         sidebar_label("Marker Size:", size='label', enabled=is_scatter)
         init_state('a_scatter_marker_size', 100)
-        st.slider("Scatter Marker Size", min_value=10, max_value=200, step=10, format="%d%%", key="a_scatter_marker_size", disabled=not is_scatter, label_visibility="collapsed")
+        # --- Updated to safe_slider ---
+        safe_slider("Scatter Marker Size", min_value=10, max_value=200, step=10, format="%d%%", key="a_scatter_marker_size", disabled=not is_scatter, label_visibility="collapsed")
 
         scatter_color_var = st.session_state.get('a_scatter_color_var') if color_by_var else None
         scatter_marker_size = st.session_state.get('a_scatter_marker_size', 100) if is_scatter else 100

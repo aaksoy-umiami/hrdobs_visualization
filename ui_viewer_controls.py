@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any
 from config import EXPECTED_GROUPS, EXPECTED_META, AVAILABLE_COLORSCALES, GLOBAL_VAR_CONFIG, COLORSCALE_NAMES
 from data_utils import load_data_from_h5, decode_metadata, compute_global_domain, compute_vert_bounds
 from ui_layout import CLR_MUTED, CLR_SUCCESS, CLR_EXTRA, FS_TABLE, FS_BODY
-from ui_components import section_divider, spacer, sidebar_label, init_state, sync_namespace, consume_flag
+from ui_components import section_divider, spacer, sidebar_label, init_state, sync_namespace, consume_flag, safe_slider
 from ui_viewer_file import render_file_upload_section
 
 @dataclass
@@ -73,7 +73,6 @@ def _extract_strict_bound(data_pack, key):
     return None
 
 def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian"):
-    # --- Filter out scalar SHIPS parameters from plottable groups ---
     available_groups = sorted([g for g in data_pack['data'].keys() if g.lower() != 'ships_params'])
     
     init_state('v_sel_group', available_groups[0] if available_groups else None)
@@ -131,7 +130,6 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
             h_col = next((cols_lower[c] for c in ['height', 'ght', 'altitude', 'elev'] if c in cols_lower), None)
             p_col = next((cols_lower[c] for c in ['pres', 'pressure', 'p'] if c in cols_lower), None)
 
-        # Let the domain UI handle the vertical filter
         exclude_col = None
         rh_z_col = st.session_state.get('v_vert_coord')
 
@@ -139,7 +137,6 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
             sel_group, active_z_col=exclude_col or rh_z_col, exclude_vectors=False
         )
 
-        # --- Filter out 3D variables for horizontal projections ---
         if plot_type in ["Horizontal Cartesian", "Horizontal Storm-Relative"]:
             vars_list = [v for v in vars_list if "3d" not in v.lower()]
 
@@ -265,7 +262,6 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
         
         if sm_heading is not None:
             try:
-                # Safely parse the value in case it's a raw byte string like b'290.0'
                 sm_dir = float(str(sm_heading).strip("[]b'\" "))
                 if not math.isnan(sm_dir):
                     has_valid_motion = True
@@ -278,15 +274,11 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
             
         if 'ships_params' in data_pack.get('data', {}):
             ships_df = data_pack['data']['ships_params']
-            
-            # Deep Layer Shear (850-200 hPa)
             if 'shrd_kt' in ships_df.columns and 'shtd_deg' in ships_df.columns:
                 mag = ships_df['shrd_kt'].iloc[0]
                 dr  = ships_df['shtd_deg'].iloc[0]
                 if pd.notna(mag) and pd.notna(dr):
                     sr_up_options.append("850-200 hPa Shear")
-                    
-            # Vortex-Removed Shear
             if 'shdc_kt' in ships_df.columns and 'sddc_deg' in ships_df.columns:
                 mag = ships_df['shdc_kt'].iloc[0]
                 dr  = ships_df['sddc_deg'].iloc[0]
@@ -345,7 +337,6 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
 
         section_divider()
 
-        # 3D Settings 
         options = [c for c in [h_col, p_col] if c]
         can_do_3d = (h_col is not None or p_col is not None) and not is_rh
         if (not can_do_3d or is_rh) and st.session_state.get('v_is_3d', False):
@@ -361,7 +352,6 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
             if st.session_state.get('v_3d_z') not in options_3d:
                 st.session_state.v_3d_z = options_3d[0]
                 
-            # Helper to map the raw column names to clean dropdown labels
             def format_3d_z(x):
                 if x == h_col: return "Geopotential Height"
                 if x == p_col: return "Pressure"
@@ -373,7 +363,7 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
                 key='v_3d_z', 
                 label_visibility="collapsed", 
                 disabled=not is_3d,
-                format_func=format_3d_z # <-- Added format_func here
+                format_func=format_3d_z 
             )
 
         r1, r2 = st.columns([1.1, 2.2])
@@ -381,7 +371,8 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
             sidebar_label("Vert. Aspect Ratio:", enabled=is_3d)
         with r2:
             init_state('v_3d_ratio', 0.75)
-            z_ratio = st.slider("VAR", min_value=0.05, max_value=1.5, step=0.05, key='v_3d_ratio', disabled=not is_3d, label_visibility="collapsed")
+            # Using safe_slider here
+            z_ratio = safe_slider("VAR", min_value=0.05, max_value=1.5, step=0.05, key='v_3d_ratio', disabled=not is_3d, label_visibility="collapsed")
 
     return plot_type, sr_up_convention, sr_track_grp, is_3d, target_col_3d, z_ratio, can_do_3d, show_cen, cen_mode, cen_vector_dir
 
@@ -435,7 +426,8 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
         with t_c1: st.markdown(f"<div style='margin-top: 6px; font-size: {FS_BODY}px; font-weight: 500; color:{thin_color}; text-align:right;'>Show</div>", unsafe_allow_html=True)
         with t_c2:
             init_state('v_thin_pct', 50)
-            thin_pct = st.slider("Thinning", min_value=5, max_value=100, step=5, key='v_thin_pct', disabled=not apply_thinning, label_visibility="collapsed")
+            # Using safe_slider
+            thin_pct = safe_slider("Thinning", min_value=5, max_value=100, step=5, key='v_thin_pct', disabled=not apply_thinning, label_visibility="collapsed")
         with t_c3: st.markdown(f"<div style='margin-top: 6px; font-size: {FS_BODY}px; font-weight: 500; color:{thin_color};'>% of obs.</div>", unsafe_allow_html=True)
 
         section_divider()
@@ -491,15 +483,18 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
         with m2:
             if is_vector:
                 init_state('v_vec_scale', 2.0)
-                vec_scale = st.slider("Vector Scale", min_value=0.1, max_value=5.0, step=0.1, key='v_vec_scale', label_visibility="collapsed")
+                # Using safe_slider
+                vec_scale = safe_slider("Vector Scale", min_value=0.1, max_value=5.0, step=0.1, key='v_vec_scale', label_visibility="collapsed")
                 marker_sz = 100
             else:
                 init_state('v_marker_size', 50)
-                marker_sz = st.slider("Marker Size", min_value=10, max_value=200, step=10, format="%d%%", key='v_marker_size', label_visibility="collapsed")
+                # Using safe_slider
+                marker_sz = safe_slider("Marker Size", min_value=10, max_value=200, step=10, format="%d%%", key='v_marker_size', label_visibility="collapsed")
                 vec_scale = 1.0
 
     return (apply_thinning, thin_pct, track_mapping, plot_track, 
             selected_platform, track_proj, marker_sz, vec_scale, custom_colorscale)
+
 
 def render_viewer_controls(plotter) -> ViewerIntent:
     intent = ViewerIntent()

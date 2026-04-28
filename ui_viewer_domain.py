@@ -16,7 +16,7 @@ from config import (
     GLOBAL_LON_MIN, GLOBAL_LON_MAX
 )
 from data_utils import decode_metadata, compute_global_domain, compute_vert_bounds
-from ui_components import section_divider, sidebar_label, init_state, consume_flag
+from ui_components import section_divider, sidebar_label, init_state, consume_flag, safe_slider, dynamic_range_slider
 
 def _render_domain_section(data_pack, sel_group, df_sel, options,
                            target_col_3d, is_3d,
@@ -83,7 +83,8 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
             c1, c2 = st.columns([0.7, 2.0])
             with c1: sidebar_label('Max Range:', size='label')
             with c2:
-                sr_max_range = st.slider("Max Range (km)", min_value=25.0, max_value=float(sr_slider_max), step=25.0, key='v_sr_max_range', label_visibility="collapsed")
+                # Replaced raw slider with safe_slider to automatically prevent the 25.0 bounds collision
+                sr_max_range = safe_slider("Max Range (km)", min_value=25.0, max_value=float(sr_slider_max), step=25.0, key='v_sr_max_range', label_visibility="collapsed")
 
             domain_bounds = {
                 'lat_min': GLOBAL_LAT_MIN, 'lat_max': GLOBAL_LAT_MAX,
@@ -100,26 +101,22 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                 _s_lat_min, _s_lat_max = st.session_state.get('_slider_lat_bounds', (_gd_lat[0], _gd_lat[1]))
                 init_state('v_lat_range', _gd_lat)
                 
-                c_lat_min, c_lat_max = st.session_state.v_lat_range
-                c_lat_min = max(_s_lat_min, min(c_lat_min, _s_lat_max))
-                c_lat_max = max(_s_lat_min, min(c_lat_max, _s_lat_max))
-                if c_lat_min > c_lat_max: c_lat_min = c_lat_max
-                st.session_state.v_lat_range = (c_lat_min, c_lat_max)
-
-                lat_range = st.slider("Latitude Limits", min_value=_s_lat_min, max_value=_s_lat_max, key='v_lat_range', step=0.1, label_visibility="collapsed")
+                lat_range = dynamic_range_slider(
+                    "Latitude Limits", global_min=_gd_lat[0], global_max=_gd_lat[1], 
+                    data_min=_s_lat_min, data_max=_s_lat_max, 
+                    key='v_lat_range', step=0.1, label_visibility="collapsed"
+                )
             
             with c3: sidebar_label('Lon:', size='label')
             with c4:
                 _s_lon_min, _s_lon_max = st.session_state.get('_slider_lon_bounds', (_gd_lon[0], _gd_lon[1]))
                 init_state('v_lon_range', _gd_lon)
                 
-                c_lon_min, c_lon_max = st.session_state.v_lon_range
-                c_lon_min = max(_s_lon_min, min(c_lon_min, _s_lon_max))
-                c_lon_max = max(_s_lon_min, min(c_lon_max, _s_lon_max))
-                if c_lon_min > c_lon_max: c_lon_min = c_lon_max
-                st.session_state.v_lon_range = (c_lon_min, c_lon_max)
-
-                lon_range = st.slider("Longitude Limits", min_value=_s_lon_min, max_value=_s_lon_max, key='v_lon_range', step=0.1, label_visibility="collapsed")
+                lon_range = dynamic_range_slider(
+                    "Longitude Limits", global_min=_gd_lon[0], global_max=_gd_lon[1], 
+                    data_min=_s_lon_min, data_max=_s_lon_max, 
+                    key='v_lon_range', step=0.1, label_visibility="collapsed"
+                )
 
             domain_bounds = {'lat_min': lat_range[0], 'lat_max': lat_range[1], 'lon_min': lon_range[0], 'lon_max': lon_range[1]}
 
@@ -130,7 +127,6 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
         z_con        = None
         plot_z_col   = None
 
-        # --- NEW INTEGRATED VERTICAL CONTROLS ---
         if options and df_sel is not None:
             init_state('v_vert_coord', options[0])
             if st.session_state.v_vert_coord not in options:
@@ -153,10 +149,8 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                     long = decode_metadata(meta.get('long_name', '')) or x.replace('_', ' ').title()
                     return long.title()
                 
-                # The dropdown to select which Z coordinate to use
                 st.selectbox("VCoord", options, key='v_vert_coord', label_visibility="collapsed", format_func=_fmt_vert)
 
-            # Check if coordinates were swapped so we can safely reset the slider boundaries
             if st.session_state.get('v_last_coord') != domain_z_col:
                 st.session_state.pop('v_vert_range', None)
                 st.session_state.v_last_coord = domain_z_col
@@ -177,14 +171,12 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                 if zmin_global >= zmax_global: zmax_global = zmin_global + 1.0
 
                 init_state('v_vert_range', (zmin_global, zmax_global))
-                c_min, c_max = st.session_state.v_vert_range
-                c_min = max(zmin_global, min(c_min, zmax_global))
-                c_max = max(zmin_global, min(c_max, zmax_global))
-                if c_min > c_max: c_min = c_max
-                st.session_state.v_vert_range = (c_min, c_max)
-
-                # The vertical slider (spans full width under the label/dropdown)
-                vert_range_ui = st.slider("Vertical Limits", min_value=zmin_global, max_value=zmax_global, key='v_vert_range', step=0.01, label_visibility="collapsed")
+                
+                vert_range_ui = dynamic_range_slider(
+                    "Vertical Limits", global_min=zmin_global, global_max=zmax_global,
+                    data_min=zmin_global, data_max=zmax_global, 
+                    key='v_vert_range', step=0.01, label_visibility="collapsed"
+                )
 
                 vert_range = vert_range_ui
                 domain_bounds['z_min']     = vert_range[0]
@@ -195,7 +187,6 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                 if is_rh:
                     rh_z_col = domain_z_col
                 else:
-                    # In Cartesian/SR modes, this slider implicitly acts as the Z-filter!
                     z_con = {'col': domain_z_col, 'val': (vert_range[1] + vert_range[0]) / 2.0, 'tol': abs(vert_range[1] - vert_range[0]) / 2.0, 'convert_pa_to_hpa': convert_dom}
                     plot_z_col = domain_z_col if not is_3d else (target_col_3d if target_col_3d else domain_z_col)
 
@@ -231,7 +222,6 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                     else:
                         temp_df = _fit_df.copy()
                         
-                        # Apply vertical domain limit to fit if in cartesian
                         if domain_z_col and domain_z_col in temp_df.columns and 'v_vert_range' in st.session_state:
                             vmin, vmax = st.session_state.v_vert_range
                             v_unit = decode_metadata(data_pack['var_attrs'].get(sel_group, {}).get(domain_z_col, {}).get('units', ''))
@@ -329,11 +319,9 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
             st.info("No time data available for this variable.")
             return None
 
-        # --- DYNAMIC TIME PARSER ---
         time_vals = df_sel[time_col].dropna()
         is_legacy_time = (time_vals > 1.9e13).any()
         
-        # 1. Grab the offset we calculated in data_utils!
         offset = data_pack.get('meta', {}).get('time_offset_seconds', 0.0)
 
         if is_legacy_time:
@@ -343,9 +331,7 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
                 format="%Y%m%d%H%M%S", errors='coerce'
             ).dropna()
         else:
-            # 2. Subtract the offset before converting to datetime!
             dt_series = pd.to_datetime(df_sel[time_col] - offset, unit='s', errors='coerce').dropna()
-        # -------------------------------
 
         if dt_series.empty:
             st.warning("Time column exists, but all values are invalid or corrupted.")
@@ -385,6 +371,7 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
         _pending_time = consume_flag('_pending_time_range')
         if _pending_time: st.session_state.v_time_range = _pending_time
             
+        # Standard Streamlit slider explicitly maintained to support the safe timedelta logic 
         if pd.isnull(_t_slider_min) or pd.isnull(_t_slider_max):
             st.warning("⚠️ Invalid time bounds in current domain.")
             return None
@@ -416,7 +403,6 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
             if st.button("⏱️ Auto-fit time", width="stretch", key='btn_time_fit') or consume_flag('_trigger_time_fit'):
                 temp_df = df_sel.copy()
                 
-                # Use the new domain-level Z filter when autofitting time
                 if domain_bounds and domain_bounds.get('z_col') and 'v_vert_range' in st.session_state:
                     t_col = domain_bounds['z_col']
                     if t_col in temp_df.columns:
@@ -446,13 +432,11 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
                     temp_df = temp_df[mask]
 
                 if not temp_df.empty:
-                    # 3. Grab the offset here too
                     offset = data_pack.get('meta', {}).get('time_offset_seconds', 0.0)
                     
                     if is_legacy_time:
                         visible_dt = pd.to_datetime(temp_df[time_col].apply(lambda x: f"{x:.0f}"), format="%Y%m%d%H%M%S", errors='coerce').dropna()
                     else:
-                        # 4. Subtract the offset here too!
                         visible_dt = pd.to_datetime(temp_df[time_col] - offset, unit='s', errors='coerce').dropna()
                     
                     if not visible_dt.empty:
@@ -476,7 +460,6 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
                 st.session_state.pop('_slider_time_bounds', None)
                 st.rerun()
 
-        # --- DYNAMIC BOUNDS RETURN ---
         offset = data_pack.get('meta', {}).get('time_offset_seconds', 0.0)
         
         if is_legacy_time:
@@ -484,11 +467,9 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
             ret_max = float(time_range[1].strftime("%Y%m%d%H%M%S"))
         else:
             from datetime import timezone
-            # Add the offset back so the bounds match the raw DataFrame!
             ret_min = time_range[0].replace(tzinfo=timezone.utc).timestamp() + offset
             ret_max = time_range[1].replace(tzinfo=timezone.utc).timestamp() + offset
             
         time_bounds = {'col': time_col, 'min': ret_min, 'max': ret_max}
-        # ---------------------------------
 
     return time_bounds

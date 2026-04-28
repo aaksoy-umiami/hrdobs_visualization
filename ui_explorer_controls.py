@@ -18,7 +18,7 @@ from config import (
     GLOBAL_VAR_CONFIG, SHIPS_PREDICTOR_META
 )
 from ui_layout import CLR_MUTED, FS_BODY
-from ui_components import spacer, sidebar_label, multiselect_with_controls, section_divider, init_state, sync_namespace
+from ui_components import spacer, sidebar_label, multiselect_with_controls, section_divider, init_state, sync_namespace, safe_slider, dynamic_range_slider
 
 # --- SHIPS Parameter Definitions ---
 SHIPS_CONFIG = {
@@ -136,7 +136,7 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         'ui_lat': (db_lat_min, db_lat_max),
         'ui_lon': (db_lon_min, db_lon_max),
         'ui_unit': "knots", 'prev_unit': "knots",
-        'ui_int': (float(np.floor(raw_min_i * MS_TO_KTS)), float(np.ceil(raw_max_i * MS_TO_KTS))), # <-- Apply knot conversion
+        'ui_int': (float(np.floor(raw_min_i * MS_TO_KTS)), float(np.ceil(raw_max_i * MS_TO_KTS))),
         'ui_slp': (init_min_p, init_max_p),
         'ui_ships_inc_nan': True,
         'ui_sort_col': 'Year', 'ui_sort_order': 'Ascending',
@@ -145,8 +145,8 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
     # Initialize state for SHIPS sliders
     for col, bounds in ships_global_bounds.items():
         default_state[f"ui_ships_{col}"] = bounds
-        default_state[f"_last_t_min_ships_{col}"] = bounds[0]
-        default_state[f"_last_t_max_ships_{col}"] = bounds[1]
+        default_state[f"_last_t_min_ui_ships_{col}"] = bounds[0]
+        default_state[f"_last_t_max_ui_ships_{col}"] = bounds[1]
 
     init_state('explorer_state', {})
     for k, v in default_state.items():
@@ -168,16 +168,18 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         st.session_state.ui_lon    = (db_lon_min, db_lon_max)
         st.session_state.ui_sort_col   = 'Year'
         st.session_state.ui_sort_order = 'Ascending'
-        st.session_state._last_t_min_i = float(np.floor(raw_min_i * cur_mult))
-        st.session_state._last_t_max_i = float(np.ceil(raw_max_i * cur_mult))
-        st.session_state._last_t_min_p = init_min_p
-        st.session_state._last_t_max_p = init_max_p
+        
+        # Reset internal tracker states for dynamic range wrappers
+        st.session_state._last_t_min_ui_int = float(np.floor(raw_min_i * cur_mult))
+        st.session_state._last_t_max_ui_int = float(np.ceil(raw_max_i * cur_mult))
+        st.session_state._last_t_min_ui_slp = init_min_p
+        st.session_state._last_t_max_ui_slp = init_max_p
         
         st.session_state.ui_ships_inc_nan = True
         for c, b in ships_global_bounds.items():
             st.session_state[f"ui_ships_{c}"] = b
-            st.session_state[f"_last_t_min_ships_{c}"] = b[0]
-            st.session_state[f"_last_t_max_ships_{c}"] = b[1]
+            st.session_state[f"_last_t_min_ui_ships_{c}"] = b[0]
+            st.session_state[f"_last_t_max_ui_ships_{c}"] = b[1]
 
     st.sidebar.markdown(f"### 🌍 Apply Filters Below to List Matching Files")
     
@@ -209,7 +211,7 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
             multiselect_with_controls(label, avail, key)
             section_divider()
 
-        # --- NEW GEOGRAPHIC LOCATION SECTION ---
+        # --- GEOGRAPHIC LOCATION SECTION ---
         st.markdown("#### Geographic Location")
         
         avail_basins_in_db = db_df['Basin'].dropna().unique()
@@ -221,9 +223,7 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
             return (global_min, global_max) if v_min > v_max else (v_min, v_max)
 
         def on_region_change():
-            # Use .get() to prevent AttributeErrors during Streamlit's callback execution phase
             reg = st.session_state.get("ui_region", "Global (All)")
-            
             if reg in GEO_REGIONS and GEO_REGIONS[reg]['lat'] is not None:
                 st.session_state.ui_lat = clip_bounds(GEO_REGIONS[reg]['lat'], db_lat_min, db_lat_max)
                 st.session_state.ui_lon = clip_bounds(GEO_REGIONS[reg]['lon'], db_lon_min, db_lon_max)
@@ -234,25 +234,21 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         def on_geo_slider_change():
             st.session_state.ui_region = "Custom"
             
-        # Updated Label
         st.selectbox("Filter Region ('Custom' Unfreezes Lat/Lon Sliders):", avail_regions, key="ui_region", on_change=on_region_change)
-        
         spacer('sm')
-        
-        # Check if the sliders should be disabled (locked)
         disable_sliders = st.session_state.get("ui_region", "Global (All)") != "Custom"
         
         sidebar_label("Longitude (deg)", size="label")
-        st.slider("Longitude", min_value=db_lon_min, max_value=db_lon_max, step=1.0, key="ui_lon", 
-                  label_visibility="collapsed", on_change=on_geo_slider_change, disabled=disable_sliders)
+        safe_slider("Longitude", min_value=db_lon_min, max_value=db_lon_max, step=1.0, key="ui_lon", 
+                    label_visibility="collapsed", on_change=on_geo_slider_change, disabled=disable_sliders)
         
         sidebar_label("Latitude (deg)", size="label")
-        st.slider("Latitude", min_value=db_lat_min, max_value=db_lat_max, step=1.0, key="ui_lat", 
-                  label_visibility="collapsed", on_change=on_geo_slider_change, disabled=disable_sliders)
+        safe_slider("Latitude", min_value=db_lat_min, max_value=db_lat_max, step=1.0, key="ui_lat", 
+                    label_visibility="collapsed", on_change=on_geo_slider_change, disabled=disable_sliders)
         
         section_divider()
 
-        # --- INTENSITY & MSLP GROUPING (No separators) ---
+        # --- INTENSITY & MSLP GROUPING ---
         filtered_cats = db_df[get_dropdown_mask(db_df, "TC_Category", has_vars)]["TC_Category"]
         avail_cats = get_safe_options(filtered_cats, "ui_cats")
         multiselect_with_controls("Filter by Category", avail_cats, "ui_cats")
@@ -279,10 +275,11 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
             st.session_state.ui_int  = (new_low, new_high)
             st.session_state.prev_unit = unit
             
-            last_min_old = st.session_state.get('_last_t_min_i', old_g_min)
-            last_max_old = st.session_state.get('_last_t_max_i', old_g_max)
-            st.session_state._last_t_min_i = last_min_old * MS_TO_KTS if unit == "knots" else last_min_old / MS_TO_KTS
-            st.session_state._last_t_max_i = last_max_old * MS_TO_KTS if unit == "knots" else last_max_old / MS_TO_KTS
+            # Align internal tracking keys for the wrapper conversion
+            last_min_old = st.session_state.get('_last_t_min_ui_int', old_g_min)
+            last_max_old = st.session_state.get('_last_t_max_ui_int', old_g_max)
+            st.session_state._last_t_min_ui_int = last_min_old * MS_TO_KTS if unit == "knots" else last_min_old / MS_TO_KTS
+            st.session_state._last_t_max_ui_int = last_max_old * MS_TO_KTS if unit == "knots" else last_max_old / MS_TO_KTS
 
         slider_mask = get_dropdown_mask(db_df, ['Intensity', 'MSLP'], has_vars)
         slider_df   = db_df[slider_mask]
@@ -290,54 +287,28 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         t_min_i  = float(np.floor(slider_df['Intensity_ms'].min() * mult)) if not slider_df.empty else g_min_i_unit
         t_max_i  = float(np.ceil( slider_df['Intensity_ms'].max() * mult)) if not slider_df.empty else g_max_i_unit
         
-        last_t_min_i = st.session_state.get('_last_t_min_i', g_min_i_unit)
-        last_t_max_i = st.session_state.get('_last_t_max_i', g_max_i_unit)
-        curr_val_i   = st.session_state.ui_int
-        
-        if curr_val_i[0] <= last_t_min_i + 0.1 and curr_val_i[1] >= last_t_max_i - 0.1:
-            new_val_i = (t_min_i, t_max_i)
-        else:
-            new_val_i = (max(t_min_i, min(curr_val_i[0], t_max_i)), max(t_min_i, min(curr_val_i[1], t_max_i)))
-            if new_val_i[0] > new_val_i[1]: new_val_i = (t_min_i, t_max_i)
-
-        st.session_state.ui_int = new_val_i
-        st.session_state._last_t_min_i = t_min_i
-        st.session_state._last_t_max_i = t_max_i
-
-        st.slider("Intensity", min_value=g_min_i_unit, max_value=g_max_i_unit, step=5.0 if unit == "knots" else 1.0, key="ui_int", label_visibility="collapsed")
+        dynamic_range_slider("Intensity", global_min=g_min_i_unit, global_max=g_max_i_unit, 
+                             data_min=t_min_i, data_max=t_max_i, 
+                             step=5.0 if unit == "knots" else 1.0, 
+                             key="ui_int", label_visibility="collapsed")
 
         sidebar_label('MSLP (hPa)', size='label')
         t_min_p = float(np.floor(slider_df['MSLP_hPa'].min())) if not slider_df.empty else init_min_p
         t_max_p = float(np.ceil( slider_df['MSLP_hPa'].max())) if not slider_df.empty else init_max_p
         
-        last_t_min_p = st.session_state.get('_last_t_min_p', init_min_p)
-        last_t_max_p = st.session_state.get('_last_t_max_p', init_max_p)
-        curr_val_p   = st.session_state.ui_slp
-        
-        if curr_val_p[0] <= last_t_min_p + 0.1 and curr_val_p[1] >= last_t_max_p - 0.1:
-            new_val_p = (t_min_p, t_max_p)
-        else:
-            new_val_p = (max(t_min_p, min(curr_val_p[0], t_max_p)), max(t_min_p, min(curr_val_p[1], t_max_p)))
-            if new_val_p[0] > new_val_p[1]: new_val_p = (t_min_p, t_max_p)
-
-        st.session_state.ui_slp = new_val_p
-        st.session_state._last_t_min_p = t_min_p
-        st.session_state._last_t_max_p = t_max_p
-
-        st.slider("MSLP", min_value=init_min_p, max_value=init_max_p, step=1.0, key="ui_slp", label_visibility="collapsed")
+        dynamic_range_slider("MSLP", global_min=init_min_p, global_max=init_max_p, 
+                             data_min=t_min_p, data_max=t_max_p, 
+                             step=1.0, key="ui_slp", label_visibility="collapsed")
 
     with st.sidebar.container(border=True):
         st.markdown("#### Filter by Available Data")
         
         df_groups    = db_df[get_dropdown_mask(db_df, 'Groups', has_vars)]
-        # Removed sorted() to preserve the exact order defined in config.py's EXPECTED_GROUPS
         avail_groups = [g for g in EXPECTED_GROUPS if g in df_groups.columns and pd.to_numeric(df_groups[g], errors='coerce').fillna(0).sum() > 0]
         
-        # --- Anti-Reset for Groups ---
         for sel_g in st.session_state.get('ui_groups', []):
             if sel_g not in avail_groups:
                 avail_groups.append(sel_g)
-        # Re-apply EXPECTED_GROUPS sorting to the newly appended items
         avail_groups = [g for g in EXPECTED_GROUPS if g in avail_groups] + [g for g in avail_groups if g not in EXPECTED_GROUPS]
 
         multiselect_with_controls('Contains Aircraft/Platform/Track Group:', avail_groups, 'ui_groups')
@@ -347,18 +318,11 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         df_vars    = db_df[get_dropdown_mask(db_df, 'Vars', has_vars)]
         avail_vars = (sorted(set(v.strip() for v_str in df_vars['Observation_Variables'] if isinstance(v_str, str) for v in v_str.split(',') if v.strip() and v.strip().lower() != 'nan')) if has_vars else [])
 
-        df_vars    = db_df[get_dropdown_mask(db_df, 'Vars', has_vars)]
-        avail_vars = (sorted(set(v.strip() for v_str in df_vars['Observation_Variables'] if isinstance(v_str, str) for v in v_str.split(',') if v.strip() and v.strip().lower() != 'nan')) if has_vars else [])
-
         # --- RESTRICT TO OBSERVED VARIABLES ONLY ---
-        # 1. Identify coordinates from config
         excluded_vars = set([k.lower() for k, v in GLOBAL_VAR_CONFIG.items() if v.get('is_coord', False)])
-        # 2. Add all SHIPS parameters
         excluded_vars.update([k.lower() for k in SHIPS_PREDICTOR_META.keys()])
-        # 3. Add explicit structural track parameters
         excluded_vars.update(['lat', 'latitude', 'clat', 'lon', 'longitude', 'clon', 'time', 'rmw', 'vmax', 'pmin'])
 
-        # Filter the available list to strictly remove coordinates, SHIPS params, AND error variables
         avail_vars = [
             v for v in avail_vars 
             if v.lower() not in excluded_vars 
@@ -367,11 +331,9 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
             and not v.lower().endswith('error')
         ]
 
-        # --- SMART VARIABLE FILTERING (Cumulative Mask) ---
         active_groups = st.session_state.get('ui_groups', [])
         if active_groups:
             allowed_vars = set()
-            
             instrument_mappings = {
                 'sfmr': ['SFC_WSPD', 'RAIN_RATE'],
                 'tdr': ['DBZ', 'VR', 'w', 'u', 'v', 'dz', 'vt'],
@@ -389,29 +351,17 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
                         allowed_vars.update([iv.lower() for iv in ivars])
                         matched = True
                 
-                # Fallback: add all remaining valid non-derived/non-excluded variables
                 if not matched:
                     obs_vars = [k for k, v in GLOBAL_VAR_CONFIG.items() if not v.get('is_derived', False) and not v.get('is_coord', False)]
                     allowed_vars.update(obs_vars)
 
-            # Intersect available variables with the allowed list
             avail_vars = [v for v in avail_vars if v in allowed_vars or v.lower() in allowed_vars or v.upper() in allowed_vars]
-        # --------------------------------------------------
 
-        # --- VARIABLE DISPLAY FORMATTER ---
-        # 1. Start with an empty map
         var_display_map = {}
-
-        # 2. Add standard variables from config.py
         for k, v in GLOBAL_VAR_CONFIG.items():
             var_display_map[k] = v.get('display_name', k)
-
-        # 3. Add SHIPS parameters from SHIPS_PREDICTOR_META
-        # This unpacks the (unit, description) tuple automatically
         for k, (ships_unit, desc) in SHIPS_PREDICTOR_META.items():
             var_display_map[k] = f"{desc} ({ships_unit})"
-
-        # 4. Update with track/coordinate variables
         var_display_map.update({
             'lat': 'Latitude (deg)', 'latitude': 'Latitude (deg)', 
             'clat': 'Center Latitude (deg)', 'lon': 'Longitude (deg)', 
@@ -424,28 +374,19 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         })
 
         def format_var_name(short_name):
-            # Check for exact case, then upper/lower case fallbacks
             long_name = var_display_map.get(
-                short_name, 
-                var_display_map.get(short_name.upper(), 
-                                   var_display_map.get(short_name.lower(), short_name))
+                short_name, var_display_map.get(short_name.upper(), var_display_map.get(short_name.lower(), short_name))
             )
-            # Display format: "Description (Unit) (short_name)"
-            if long_name != short_name:
-                return f"{long_name} ({short_name})"
-            return short_name
-        # ----------------------------------
+            return f"{long_name} ({short_name})" if long_name != short_name else short_name
 
-        # --- Anti-Reset for Variables ---
         for sel_v in st.session_state.get('ui_vars', []):
             if sel_v not in avail_vars:
                 avail_vars.append(sel_v)
         avail_vars = sorted(avail_vars)
 
-        # Pass the format_func into the updated wrapper!
         multiselect_with_controls('Contains Observed Variable:', avail_vars, 'ui_vars', format_func=format_var_name)
 
-    # --- New SHIPS Environment Filters ---
+    # --- SHIPS Environment Filters ---
     with st.sidebar.container(border=True):
         st.markdown("#### Filter by SHIPS Parameter")
         st.checkbox("Show all files regardless of whether they contain SHIPS data", key="ui_ships_inc_nan")
@@ -454,8 +395,7 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         slider_df_ships = db_df[slider_mask_ships]
         
         for col, config in SHIPS_CONFIG.items():
-            if col not in db_df.columns:
-                continue
+            if col not in db_df.columns: continue
                 
             g_min, g_max = ships_global_bounds[col]
             
@@ -463,34 +403,17 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
             t_max = float(np.ceil(slider_df_ships[col].max())) if not slider_df_ships[col].isna().all() else g_max
             if pd.isna(t_min): t_min = g_min
             if pd.isna(t_max): t_max = g_max
-            if t_min >= t_max: t_max = t_min + config['step']
             
             state_key = f"ui_ships_{col}"
-            last_t_min_key = f"_last_t_min_ships_{col}"
-            last_t_max_key = f"_last_t_max_ships_{col}"
-            
-            last_t_min = st.session_state.get(last_t_min_key, g_min)
-            last_t_max = st.session_state.get(last_t_max_key, g_max)
-            curr_val = st.session_state.get(state_key, (g_min, g_max))
-            
-            if curr_val[0] <= last_t_min + 0.1 and curr_val[1] >= last_t_max - 0.1:
-                new_val = (t_min, t_max)
-            else:
-                new_val = (max(t_min, min(curr_val[0], t_max)), max(t_min, min(curr_val[1], t_max)))
-                if new_val[0] > new_val[1]: new_val = (t_min, t_max)
-                
-            st.session_state[state_key] = new_val
-            st.session_state[last_t_min_key] = t_min
-            st.session_state[last_t_max_key] = t_max
-            
             sidebar_label(config['label'], size='label')
-            st.slider(config['label'], min_value=g_min, max_value=g_max, step=config['step'], key=state_key, label_visibility="collapsed")
+            dynamic_range_slider(config['label'], global_min=g_min, global_max=g_max, 
+                                 data_min=t_min, data_max=t_max, 
+                                 step=config['step'], key=state_key, label_visibility="collapsed")
 
     st.sidebar.button("🔄 Reset All Filters", type="secondary", width="stretch", on_click=reset_all_filters)
 
     sync_namespace('ui_', 'explorer_state')
 
-    # Detect if any SHIPS filter has been intentionally altered by the user
     is_ships_active = False
     if not st.session_state.ui_ships_inc_nan:
         is_ships_active = True
