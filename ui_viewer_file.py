@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-ui_viewer_file.py
------------------
-File upload section for the File Data Viewer tab.
+Purpose:
+    Provides the file upload and metadata inspection interface for the File Data Viewer and Statistical Analysis tabs.
+
+Functions/Classes:
+    - render_file_upload_section: Renders the file upload container, processes HDF5 files, and handles cross-tab data inheritance.
 """
 
 import streamlit as st
@@ -21,15 +23,13 @@ from ui_layout import CLR_MUTED, CLR_SUCCESS, CLR_EXTRA, FS_TABLE, FS_BODY
 
 def render_file_upload_section(data_pack_key, filename_key, state_keys, state_dict_key):
     """
-    Renders the file upload container and returns the resolved data_pack.
+    Renders the file upload container, processes HDF5 files, and handles cross-tab data inheritance.
     """
     data_pack = st.session_state.get(data_pack_key)
     
-    # Check cross-tab inheritance
     other_data_key = 'data_pack_analysis' if data_pack_key == 'data_pack' else 'data_pack'
     other_file_key = 'last_uploaded_filename_analysis' if filename_key == 'last_uploaded_filename' else 'last_uploaded_filename'
     
-    # If this tab is empty, the other tab has a file, AND we haven't explicitly cleared this tab
     if data_pack is None and st.session_state.get(other_data_key) is not None and not st.session_state.get(f"cleared_{data_pack_key}"):
         st.session_state[data_pack_key] = st.session_state[other_data_key]
         st.session_state[filename_key] = st.session_state[other_file_key]
@@ -56,7 +56,6 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                             st.session_state[data_pack_key] = raw_data_pack
                             st.session_state[filename_key] = uploaded_file.name
                             
-                            # Clear the "cleared" flags so the other tab can inherit this new file
                             st.session_state.pop('cleared_data_pack', None)
                             st.session_state.pop('cleared_data_pack_analysis', None)
                             
@@ -126,7 +125,6 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
             with st.expander("🛳️ View SHIPS Parameters", expanded=False):
                 ships_html = f"<div style='font-size: {FS_BODY}px; line-height: 1.6; padding: 5px;'>"
                 
-                # Check if the group exists and is not empty
                 if 'ships_params' in current_pack['data'] and not current_pack['data']['ships_params'].empty:
                     ships_df = current_pack['data']['ships_params']
                     ships_html += (
@@ -140,7 +138,6 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                     
                     for col in ships_df.columns:
                         val = ships_df[col].iloc[0]
-                        # Format numbers neatly, handle NaNs
                         if pd.isna(val):
                             val_str = "<span style='color: red;'>NaN</span>"
                         elif isinstance(val, (int, float)):
@@ -148,7 +145,6 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                         else:
                             val_str = str(val)
                             
-                        # Extract units and long name if available
                         if col in SHIPS_PREDICTOR_META:
                             units = SHIPS_PREDICTOR_META[col][0]
                             long_name = SHIPS_PREDICTOR_META[col][1]
@@ -156,7 +152,6 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                             units = current_pack['var_attrs'].get('ships_params', {}).get(col, {}).get('units', '')
                             long_name = current_pack['var_attrs'].get('ships_params', {}).get(col, {}).get('long_name', '')
                         
-                        # Add hover tooltip for the long name
                         if long_name:
                             col_display = f"<span title='{long_name}' style='cursor:help; border-bottom: 1px dotted #ccc;'>{col}</span>"
                         else:
@@ -168,7 +163,6 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                             f"<td style='padding: 6px; color: gray;'>{units}</td></tr>"
                         )
                 else:
-                    # Fallback if no SHIPS data exists for this file
                     ships_html += f"<span style='color: {CLR_MUTED};'><i>No SHIPS data for this cycle</i></span>"
                     
                 ships_html += "</div>"

@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-ui_analysis.py
---------------
-Main layout and rendering logic for the Statistical Analysis tab.
+Purpose:
+    Serves as the entry point for the Statistical Analysis tab, processing user configurations into data distributions, KDEs, and scatter plots.
+
+Functions/Classes:
+    - _apply_log_transform: Temporarily modifies data columns to a base-10 logarithmic scale for visualization.
+    - _render_stats_table: Generates a table of summary statistics (count, mean, median, mode, std dev) for 1D distributions.
+    - render_analysis_tab: Coordinates the analysis UI state, delegates to the plotter, and displays the resulting charts and statistics.
 """
 
 import streamlit as st
@@ -16,6 +20,9 @@ from ui_components import spacer
 
 def _apply_log_transform(data_pack, sel_group, variable, coord_var,
                           log_var, log_coord_var):
+    """
+    Temporarily modifies data columns to a base-10 logarithmic scale for visualization.
+    """
     df = data_pack['data'][sel_group]
     added_cols = []
 
@@ -50,6 +57,9 @@ def _apply_log_transform(data_pack, sel_group, variable, coord_var,
 
 
 def _render_stats_table(vals, units, log_applied):
+    """
+    Generates a table of summary statistics for 1D distributions.
+    """
     if len(vals) == 0:
         return
     try:
@@ -74,6 +84,9 @@ def _render_stats_table(vals, units, log_applied):
 
 
 def render_analysis_tab():
+    """
+    Coordinates the analysis UI state, delegates to the plotter, and displays the resulting charts and statistics.
+    """
     apply_viewer_compaction_css()
 
     if 'analysis_state' not in st.session_state:
@@ -268,4 +281,3 @@ def render_analysis_tab():
 
     finally:
         restore()
-        

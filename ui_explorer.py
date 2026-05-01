@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-ui_explorer.py
---------------
-Global Dataset Explorer tab entry point.
+Purpose:
+    Serves as the entry point for the Global Dataset Explorer tab, coordinating filter inputs, summary plots, and table rendering.
+
+Functions/Classes:
+    - render_explorer_tab: Retrieves data, applies user constraints, and generates the filtered summary plots and data tables.
 """
 
 import streamlit as st
@@ -14,13 +16,15 @@ from datetime import datetime
 from config import EXPECTED_GROUPS
 from data_utils import load_inventory_db
 
-# Make sure all of these are imported!
 from ui_explorer_controls import render_explorer_controls, get_dropdown_mask, MS_TO_KTS, SHIPS_CONFIG
 from ui_components import spacer
 from ui_explorer_table import display_explorer_table, display_summary_table
 from ui_explorer_plots import render_explorer_summary_plots
 
 def render_explorer_tab():
+    """
+    Retrieves data, applies user constraints, and generates the filtered summary plots and data tables.
+    """
 
     DB_PATH = "hrdobs_inventory_db.csv"
     if not os.path.exists(DB_PATH):
@@ -35,16 +39,12 @@ def render_explorer_tab():
     raw_min_p = float(db_df['MSLP_hPa'].min(skipna=True))
     raw_max_p = float(db_df['MSLP_hPa'].max(skipna=True))
 
-    # Render sidebar and collect intent
     intent = render_explorer_controls(
         db_df, has_vars,
         raw_min_i, raw_max_i,
         raw_min_p, raw_max_p,
     )
 
-    # ------------------------------------------------------------------
-    # Guard: show prompt when no filter is active
-    # ------------------------------------------------------------------
     int_changed = (
         abs(intent.int_range[0] - intent.g_min_i_unit) > 0.1 or
         abs(intent.int_range[1] - intent.g_max_i_unit) > 0.1
@@ -57,7 +57,7 @@ def render_explorer_tab():
         intent.years, intent.storms, intent.cats, intent.basins,
         intent.groups, intent.vars_,
         int_changed, slp_changed,
-        getattr(intent, 'is_ships_active', False) # <--- Ensures table renders on SHIPS filter change
+        getattr(intent, 'is_ships_active', False) 
     ])
 
     if not any_active:
@@ -66,9 +66,6 @@ def render_explorer_tab():
         st.info("👈 **Ready to explore?**\nPlease make a selection from the filters to begin.")
         return
 
-    # ------------------------------------------------------------------
-    # Apply filters and validate result
-    # ------------------------------------------------------------------
     with st.spinner("Filtering database and generating tables..."):
 
         final_df = db_df[get_dropdown_mask(db_df, None, has_vars)].copy()
@@ -78,12 +75,9 @@ def render_explorer_tab():
 
         final_df['Lon'] = final_df['Lon'].abs()
 
-        # --- Create un-geographically-filtered dataframe for background lines ---
-        # 1. Get the base mask ignoring geography
         df_no_geo_mask = get_dropdown_mask(db_df, ['Geography'], has_vars)
         df_no_geo_base = db_df[df_no_geo_mask]
         
-        # 2. Get the full tracks for any storm that survived the non-geographic filters
         if not df_no_geo_base.empty:
             storm_keys = df_no_geo_base[['Storm', 'Year']].drop_duplicates()
             df_no_geo = db_df.merge(storm_keys, on=['Storm', 'Year'], how='inner').copy()
@@ -93,27 +87,14 @@ def render_explorer_tab():
 
         spacer('lg')
 
-        # ------------------------------------------------------------------
-        # 1. View Summary Table of Filtered Results
-        # ------------------------------------------------------------------
         with st.expander("🗂️ View Summary Table of Filtered Results", expanded=False):
             display_summary_table(final_df, intent.unit)
 
-        # ------------------------------------------------------------------
-        # 2. View Summary Graphics of Filtered Results
-        # ------------------------------------------------------------------
-        # Pass the new df_no_geo to the plot renderer
         render_explorer_summary_plots(final_df, intent.unit, df_no_geo)
 
-        # ------------------------------------------------------------------
-        # 3. Results Count
-        # ------------------------------------------------------------------
         spacer('md')
         st.markdown(f"#### 🔎 Found **{len(final_df)}/{len(db_df)}** matching files")
 
-        # ------------------------------------------------------------------
-        # 4. Table Controls
-        # ------------------------------------------------------------------
         def reset_table_sort():
             st.session_state.ui_sort_col   = 'Year'
             st.session_state.ui_sort_order = 'Ascending'
@@ -146,7 +127,6 @@ def render_explorer_tab():
             )
             is_asc = st.session_state.get('ui_sort_order', 'Ascending') == "Ascending"
 
-            # Primary sort column + stable secondary tiebreakers
             sort_cols = [sort_col_internal]
             asc_list  = [is_asc]
             for tb in ['Year', 'Storm', 'Cycle_Raw']:
@@ -156,7 +136,6 @@ def render_explorer_tab():
 
             final_df = final_df.sort_values(by=sort_cols, ascending=asc_list)
             
-            # --- Build Metadata Header for CSV ---
             header_lines = [
                 f"# HRDOBS Dataset Explorer Export",
                 f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
@@ -191,7 +170,6 @@ def render_explorer_tab():
                 inc_nan = st.session_state.get('ui_ships_inc_nan', True)
                 header_lines.append(f"# Include missing SHIPS data: {inc_nan}")
                 
-                # Dynamically fetch the active slider ranges using their clean UI labels
                 for col, config in SHIPS_CONFIG.items():
                     state_key = f"ui_ships_{col}"
                     last_min_key = f"_last_t_min_ships_{col}"
@@ -214,7 +192,6 @@ def render_explorer_tab():
             
             header_str = "\n".join(header_lines) + "\n"
             csv_data = header_str.encode('utf-8') + final_df.to_csv(index=False).encode('utf-8')
-            # -------------------------------------
 
             with sc5:
                 spacer('lg')
@@ -225,9 +202,5 @@ def render_explorer_tab():
                     mime='text/csv', type="secondary", width="stretch",
                 )
 
-        # ------------------------------------------------------------------
-        # 5. Full Styled Table
-        # ------------------------------------------------------------------
         spacer('sm')
         display_explorer_table(final_df, intent.unit, sort_col_internal, is_asc)
-    

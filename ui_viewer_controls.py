@@ -1,8 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-ui_viewer_controls.py
----------------------
-All sidebar widget logic for the File Data Viewer tab.
+Purpose:
+    Handles all sidebar widget logic and state management for the File Data Viewer tab.
+
+Functions/Classes:
+    - ViewerIntent: Data class representing the user's selected viewer constraints and plot settings.
+    - _extract_strict_bound: Helper to parse bounding box values safely.
+    - _render_variable_section: Renders the variable selection dropdowns.
+    - _render_plot_type_section: Renders the plot type selection (e.g., Horizontal Cartesian, Storm-Relative).
+    - _render_plotting_options: Renders generic plotting options (colorscales, marker sizes).
+    - render_viewer_controls: Main function to render all sidebar controls for the viewer tab.
 """
 
 import math
@@ -20,6 +27,9 @@ from ui_viewer_file import render_file_upload_section
 
 @dataclass
 class ViewerIntent:
+    """
+    Data class representing the user's selected viewer constraints and plot settings.
+    """
     data_pack:        Optional[Dict]  = None
     sel_group:        Optional[str]   = None
     plot_var:         Optional[str]   = None   
@@ -64,6 +74,9 @@ _VIEWER_STATE_KEYS = [
 ]
 
 def _extract_strict_bound(data_pack, key):
+    """
+    Helper to parse bounding box values safely from metadata attributes.
+    """
     for k, v in data_pack['meta'].get('info', {}).items():
         if str(k).strip("[]b'\" ").lower() == key.lower():
             try:
@@ -73,6 +86,9 @@ def _extract_strict_bound(data_pack, key):
     return None
 
 def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian"):
+    """
+    Renders the variable selection dropdowns.
+    """
     available_groups = sorted([g for g in data_pack['data'].keys() if g.lower() != 'ships_params'])
     
     init_state('v_sel_group', available_groups[0] if available_groups else None)
@@ -187,6 +203,9 @@ def _render_variable_section(data_pack, plotter, plot_type="Horizontal Cartesian
 
 
 def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, p_col=None, plotter=None):
+    """
+    Renders the plot type selection (e.g., Horizontal Cartesian, Storm-Relative).
+    """
     available_tracks = []
     for grp in data_pack.get('data', {}).keys():
         if grp.lower().startswith('track_') and len(data_pack['data'][grp]) >= 2:
@@ -378,6 +397,9 @@ def _render_plot_type_section(data_pack, sel_group, is_3d_state_in, h_col=None, 
 
 
 def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lower, plot_var, plot_type, is_3d_state, target_col_3d):
+    """
+    Renders generic plotting options (colorscales, marker sizes).
+    """
     with st.sidebar.container(border=True):
         st.markdown("### ⚙️ Plotting Options")
         
@@ -497,6 +519,9 @@ def _render_plotting_options(data_pack, sel_group, h_col, p_col, df_sel, cols_lo
 
 
 def render_viewer_controls(plotter) -> ViewerIntent:
+    """
+    Main function to render all sidebar controls for the viewer tab.
+    """
     intent = ViewerIntent()
     init_state('viewer_state', {})
 

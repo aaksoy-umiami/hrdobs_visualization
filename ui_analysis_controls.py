@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-ui_analysis_controls.py
------------------------
-Sidebar widget logic for the Statistical Analysis tab.
+Purpose:
+    Handles sidebar widget logic and state management for the Statistical Analysis tab.
+
+Functions/Classes:
+    - AnalysisIntent: Data class representing the user's selected analysis constraints.
+    - _render_analysis_variable_section: Renders the group and variable selection dropdowns based on the selected analysis type.
+    - render_analysis_controls: Main function to render all sidebar controls and return the selected analysis state.
 """
 
 import re
@@ -19,6 +23,9 @@ from ui_layout import FS_BODY
 
 @dataclass
 class AnalysisIntent:
+    """
+    Data class representing the user's selected analysis constraints.
+    """
     data_pack: Optional[Dict] = None
     analysis_type: str = "Histogram Analysis (1D)"
     sel_group: Optional[str] = None
@@ -47,7 +54,10 @@ _ANALYSIS_STATE_KEYS = [
 ]
 
 def _render_analysis_variable_section(data_pack, plotter, analysis_type):
-    # --- Filter out scalar SHIPS parameters from analyzable groups ---
+    """
+    Renders the group and variable selection dropdowns based on the selected analysis type.
+    """
+    # Filter out scalar SHIPS parameters from analyzable groups
     available_groups = sorted([
         g for g in data_pack['data'].keys() 
         if g.lower() != 'ships_params' and 'track' not in g.lower()
@@ -99,7 +109,7 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
         sm_raw = data_pack.get('meta', {}).get('info', {}).get('storm_motion')
         if sm_raw is not None:
             nums = re.findall(r'[-+]?\d*\.?\d+', str(sm_raw))
-            if len(nums) >= 2:  # Must have at least two numerical values
+            if len(nums) >= 2:
                 valid_azimuths.append('azimuth_motion')
                 
         # 2. SHIPS Shear Vectors
@@ -114,16 +124,14 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
                 if pd.notna(ships_df['shdc_kt'].iloc[0]) and pd.notna(ships_df['sddc_deg'].iloc[0]):
                     valid_azimuths.append('azimuth_shear_vortex')
 
-        # --- THE FIX: Force inject valid azimuths so the UI sees them ---
         for az in valid_azimuths:
             if az not in combined_vars:
                 combined_vars.append(az)
-        # ----------------------------------------------------------------
 
-        # NOW sort them, after we've guaranteed the valid azimuths are inside
+        # Sort the variables after verifying valid azimuths are present
         ordered_raw   = plotter.sort_variables(combined_vars, sel_group)
 
-        # Filter the ordered lists so invalid azimuths NEVER appear in the dropdowns
+        # Filter the ordered lists so invalid azimuths do not appear in the dropdowns
         ordered = [v for v in ordered_raw if not (v.lower().startswith('azimuth_') and v.lower() not in valid_azimuths)]
         
         list_1 = ordered
@@ -205,7 +213,6 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
 
         sidebar_label("Marker Size:", size='label', enabled=is_scatter)
         init_state('a_scatter_marker_size', 100)
-        # --- Updated to safe_slider ---
         safe_slider("Scatter Marker Size", min_value=10, max_value=200, step=10, format="%d%%", key="a_scatter_marker_size", disabled=not is_scatter, label_visibility="collapsed")
 
         scatter_color_var = st.session_state.get('a_scatter_color_var') if color_by_var else None
@@ -216,6 +223,9 @@ def _render_analysis_variable_section(data_pack, plotter, analysis_type):
 
 
 def render_analysis_controls() -> AnalysisIntent:
+    """
+    Main function to render all sidebar controls and return the selected analysis state.
+    """
     intent = AnalysisIntent()
     init_state('analysis_state', {})
 
@@ -274,7 +284,7 @@ def render_analysis_controls() -> AnalysisIntent:
         v1_lower = intent.variable.lower() if intent.variable else ""
         v2_lower = intent.coord_var.lower() if intent.coord_var else ""
         
-        # Dynamically checks for ANY azimuth flag matching the new generalized string pattern
+        # Checks for any computed azimuth fields
         has_az   = any(v.startswith("azimuth_") for v in [v1_lower, v2_lower])
         has_dist = "dist_from_center" in [v1_lower, v2_lower]
         is_polar_eligible = has_az and has_dist and not is_1d_hist

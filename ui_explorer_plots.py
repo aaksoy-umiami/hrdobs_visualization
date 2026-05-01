@@ -1,8 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-ui_explorer_plots.py
---------------------
-Standalone module for rendering summary visualizations in the Dataset Explorer tab.
+Purpose:
+    Generates summary visual graphics (Cartesian maps, scatter plots, and histograms) for the Global Dataset Explorer tab.
+
+Functions/Classes:
+    - _prep_plot_data: Prepares the main plot dataframe and the clipped map dataframe.
+    - _build_category_map: Builds the geographic scatter map colored by category.
+    - _build_category_histogram: Builds the bar chart showing file counts per category.
+    - _build_wind_pressure_scatter: Builds the scatter plot of wind intensity vs MSLP with an optional trendline.
+    - _build_observations_bar_chart: Builds the log-scaled bar chart representing observation counts per platform.
+    - render_explorer_summary_plots: Renders an expandable section containing summary visualizations for the currently filtered Dataset Explorer inventory.
 """
 
 import streamlit as st
@@ -10,7 +17,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-from basemap import get_basemap_traces
+from plotter_basemap import get_basemap_traces
 from ui_layout import (
     CLR_PLOT_BG, CLR_PRIMARY, FS_PLOT_TICK, 
     PLOT_HEIGHT_MAP, PLOT_MARGINS_MAP, 
@@ -22,7 +29,9 @@ from config import (
 )
 
 def _prep_plot_data(df: pd.DataFrame, unit: str, is_bg_tracks: bool = False):
-    """Prepares the main plot_df and the clipped map_df."""
+    """
+    Prepares the main plot dataframe and the clipped map dataframe.
+    """
     plot_df = df.copy()
 
     if 'Storm' in plot_df.columns and 'Year' in plot_df.columns:
@@ -30,7 +39,6 @@ def _prep_plot_data(df: pd.DataFrame, unit: str, is_bg_tracks: bool = False):
     else:
         plot_df['Storm_ID'] = 'Unknown'
 
-    # Convert Intensity and apply display units
     if 'Intensity_ms' in plot_df.columns:
         plot_df['Intensity_Converted'] = pd.to_numeric(plot_df['Intensity_ms'], errors='coerce') * (MS_TO_KTS if unit == 'knots' else 1.0)
         if unit == 'knots':
@@ -41,23 +49,19 @@ def _prep_plot_data(df: pd.DataFrame, unit: str, is_bg_tracks: bool = False):
         plot_df['Intensity_Converted'] = np.nan
         plot_df['Intensity_Str'] = "N/A"
 
-    # Prepare Clipped Dataframe for the Map
     if 'Lat' in plot_df.columns and 'Lon' in plot_df.columns:
         plot_df['Lat'] = pd.to_numeric(plot_df['Lat'], errors='coerce')
         plot_df['Lon'] = pd.to_numeric(plot_df['Lon'], errors='coerce')
         
-        # Negate Longitude for standard Western Hemisphere mapping
         plot_df['Lon_Plot'] = -plot_df['Lon'].abs()
         
         if not is_bg_tracks:
-            # Restore original hardcoded DOMAIN bounds for the clip mask
             mask = (
                 (plot_df['Lat'] >= DOMAIN_LAT_MIN) & (plot_df['Lat'] <= DOMAIN_LAT_MAX) &
                 (plot_df['Lon_Plot'] >= DOMAIN_LON_MIN) & (plot_df['Lon_Plot'] <= DOMAIN_LON_MAX)
             )
             map_df = plot_df[mask].dropna(subset=['Lat', 'Lon_Plot']).copy()
         else:
-            # For background tracks, keep all points so lines aren't broken by boundaries
             map_df = plot_df.dropna(subset=['Lat', 'Lon_Plot']).copy()
             
         if 'Year' in map_df.columns and 'Storm' in map_df.columns and 'Cycle_Raw' in map_df.columns:
@@ -68,24 +72,23 @@ def _prep_plot_data(df: pd.DataFrame, unit: str, is_bg_tracks: bool = False):
     return plot_df, map_df
 
 def _build_category_map(map_df: pd.DataFrame, unit: str, bg_df: pd.DataFrame = None) -> go.Figure:
-    """Builds the geographic scatter map colored by category."""
+    """
+    Builds the geographic scatter map colored by category.
+    """
     fig = go.Figure()
     
     if bg_df is None:
         bg_df = map_df
         
-    # Restore original fixed domain bounds
     domain_bounds = {
         'lat_min': DOMAIN_LAT_MIN, 'lat_max': DOMAIN_LAT_MAX, 
         'lon_min': DOMAIN_LON_MIN, 'lon_max': DOMAIN_LON_MAX
     }
     
-    # Layer 0: Basemap
     for bm_trace in get_basemap_traces(domain_bounds):
         bm_trace.line.color = 'rgba(100, 100, 100, 0.6)'
         fig.add_trace(bm_trace)
 
-    # Layer 1: Connecting Track Lines (from bg_df bypassing the geographic filter)
     for storm_id in bg_df['Storm_ID'].unique():
         storm_data = bg_df[bg_df['Storm_ID'] == storm_id]
         fig.add_trace(go.Scatter(
@@ -94,7 +97,6 @@ def _build_category_map(map_df: pd.DataFrame, unit: str, bg_df: pd.DataFrame = N
             showlegend=False, hoverinfo='skip'
         ))
 
-    # Layer 2: Category Markers (from the fully filtered map_df)
     existing_cats = set(map_df['TC_Category'].unique())
     current_cats = [c for c in CAT_ORDER if c in existing_cats] + [c for c in existing_cats if c not in CAT_ORDER]
 
@@ -120,7 +122,6 @@ def _build_category_map(map_df: pd.DataFrame, unit: str, bg_df: pd.DataFrame = N
         title={'text': "Geographic Distribution by Intensity Category", 'x': 0.5, 'xanchor': 'center', 'xref': 'paper'},
         margin=PLOT_MARGINS_MAP, paper_bgcolor=CLR_PLOT_BG, plot_bgcolor=CLR_PLOT_BG, height=PLOT_HEIGHT_MAP,
         
-        # Restore fixed axis limits
         xaxis=dict(title='Longitude', range=[DOMAIN_LON_MIN, DOMAIN_LON_MAX], showgrid=True, gridcolor='rgba(200, 200, 200, 0.4)',
                    zeroline=False, dtick=10, showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
                    tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY),constrain='domain'),
@@ -140,7 +141,9 @@ def _build_category_map(map_df: pd.DataFrame, unit: str, bg_df: pd.DataFrame = N
     return fig
 
 def _build_category_histogram(plot_df: pd.DataFrame) -> go.Figure:
-    """Builds the bar chart showing file counts per category."""
+    """
+    Builds the bar chart showing file counts per category.
+    """
     counts = plot_df['TC_Category'].value_counts() if 'TC_Category' in plot_df.columns else pd.Series()
     active_cats    = [cat for cat in CAT_ORDER if cat != 'Unknown' or counts.get(cat, 0) > 0]
     ordered_counts = [counts.get(cat, 0) for cat in active_cats]
@@ -170,7 +173,9 @@ def _build_category_histogram(plot_df: pd.DataFrame) -> go.Figure:
     return fig_hist
 
 def _build_wind_pressure_scatter(plot_df: pd.DataFrame, unit: str) -> go.Figure:
-    """Builds the scatter plot of wind intensity vs MSLP with an optional trendline."""
+    """
+    Builds the scatter plot of wind intensity vs MSLP with an optional trendline.
+    """
     if 'MSLP_hPa' in plot_df.columns:
         wp_df = plot_df.copy()
         wp_df['MSLP_hPa'] = pd.to_numeric(wp_df['MSLP_hPa'], errors='coerce')
@@ -197,7 +202,6 @@ def _build_wind_pressure_scatter(plot_df: pd.DataFrame, unit: str) -> go.Figure:
     x = wp_df['Intensity_Converted']
     y = wp_df['MSLP_hPa']
     
-    # Use the unit directly to determine the decimal formatting
     tick_fmt = '.0f' if unit == 'knots' else '.1f'
     
     if len(x) > 0 and len(x) > 1 and x.nunique() > 1:
@@ -218,7 +222,6 @@ def _build_wind_pressure_scatter(plot_df: pd.DataFrame, unit: str) -> go.Figure:
         title={'text': "Wind-Pressure Rel.", 'x': 0.5, 'xanchor': 'center', 'xref': 'paper'}, 
         margin=PLOT_MARGINS_SUMMARY, paper_bgcolor=CLR_PLOT_BG, plot_bgcolor=CLR_PLOT_BG, height=PLOT_HEIGHT_SUMMARY,
         
-        # Directly inject {unit} into the axis title
         xaxis=dict(title=f'Storm Intensity ({unit})', tickformat=tick_fmt,   
                    showgrid=True, gridcolor='rgba(200, 200, 200, 0.4)', showline=True, linewidth=1.5, linecolor=CLR_PRIMARY, mirror=True,
                    tickfont=dict(size=FS_PLOT_TICK, color=CLR_PRIMARY), fixedrange=True, automargin=False),
@@ -230,7 +233,9 @@ def _build_wind_pressure_scatter(plot_df: pd.DataFrame, unit: str) -> go.Figure:
     return fig_wp
 
 def _build_observations_bar_chart(plot_df: pd.DataFrame) -> go.Figure:
-    """Builds the log-scaled bar chart representing observation counts per platform."""
+    """
+    Builds the log-scaled bar chart representing observation counts per platform.
+    """
     def get_metrics(*cols):
         sv, m = 0, pd.Series(False, index=plot_df.index)
         for c in cols:
@@ -260,7 +265,6 @@ def _build_observations_bar_chart(plot_df: pd.DataFrame) -> go.Figure:
             (*get_metrics('tdr_noaa42', 'tdr_noaa43'), PLATFORM_COLORS['NOAA P-3'], 'NOAA P-3'), 
             (*get_metrics('tdr_noaa49'), PLATFORM_COLORS['NOAA G-IV'], 'NOAA G-IV')
         ],
-        # 1. ADD THIS LINE: Insert SHIPS data mapped to the yellow 'Tracks' color
         [(*get_metrics('ships_params'), PLATFORM_COLORS['Tracks'], 'SHIPS')],
         
         [(*get_metrics('track_vortex_message'), PLATFORM_COLORS['Tracks'], 'Tracks')], 
@@ -268,7 +272,6 @@ def _build_observations_bar_chart(plot_df: pd.DataFrame) -> go.Figure:
         [(*get_metrics('track_spline_track'), PLATFORM_COLORS['Tracks'], 'Tracks')]
     ]
 
-    # 2. UPDATE THIS LINE: Add 'SHIPS' to the corresponding x-axis labels
     group_labels = ['Dropsondes', 'Flight Level', 'SFMR', 'TDR', 'SHIPS', 'Vortex Msg.', 'Best Track', 'High-Res. Track']
     
     barWidth, groupGap = 0.35, 0.8
@@ -331,7 +334,6 @@ def render_explorer_summary_plots(df: pd.DataFrame, unit: str, df_no_geo: pd.Dat
 
         plot_df, map_df = _prep_plot_data(df, unit)
         
-        # Prepare the background dataframe
         if df_no_geo is not None:
             _, bg_map_df = _prep_plot_data(df_no_geo, unit, is_bg_tracks=True)
         else:
@@ -344,22 +346,15 @@ def render_explorer_summary_plots(df: pd.DataFrame, unit: str, df_no_geo: pd.Dat
             unsafe_allow_html=True
         )
 
-        # =====================================================================
-        # TOP ROW: The Geographic Map 
-        # =====================================================================
         if map_df.empty:
             st.info("No valid coordinates fall within the map domain.")
         else:
-            # Pass the background dataframe in to draw the tracks
             fig_map = _build_category_map(map_df, unit, bg_df=bg_map_df)
             
             col_left, col_center, col_right = st.columns([1, 4, 1])
             with col_center:
                 st.plotly_chart(fig_map, width="content")
 
-        # =====================================================================
-        # BOTTOM ROW: 3 Summary Plots
-        # =====================================================================
         c1, c2, c3 = st.columns(3)
 
         with c1:
@@ -369,7 +364,6 @@ def render_explorer_summary_plots(df: pd.DataFrame, unit: str, df_no_geo: pd.Dat
         with c2:
             fig_wp = _build_wind_pressure_scatter(plot_df, unit)
             if fig_wp.data:
-                # The dynamic key prevents Streamlit from freezing the plot when units toggle
                 st.plotly_chart(fig_wp, width="stretch", key=f"wp_scatter_{unit}_{len(plot_df)}")
             else:
                 st.info("Not enough valid data for Wind-Pressure plot.")
@@ -377,4 +371,3 @@ def render_explorer_summary_plots(df: pd.DataFrame, unit: str, df_no_geo: pd.Dat
         with c3:
             fig_obs = _build_observations_bar_chart(plot_df)
             st.plotly_chart(fig_obs, width="stretch")
-            

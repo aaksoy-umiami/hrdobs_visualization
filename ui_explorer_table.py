@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 
 """
-ui_explorer_table.py
-----------
-Formats and renders the filtered inventory results as a styled HTML multi-index table with group-separated columns and hover tooltips on storm names.
-It also includes a summary table renderer that groups active results by individual storms.
+Purpose:
+    Formats and renders the filtered inventory results as styled HTML tables, including the detailed multi-index view and the storm-level summary view.
+
+Functions/Classes:
+    - display_summary_table: Aggregates and renders a summary table grouped by individual storms.
+    - display_explorer_table: Renders the detailed multi-index file table with hover tooltips and dynamic color formatting.
 """
 
 import pandas as pd
@@ -12,7 +14,9 @@ import streamlit as st
 from config import EXPECTED_GROUPS, CAT_ORDER, MS_TO_KTS
 
 def display_summary_table(final_df, unit):
-    """Formats and renders a summary table grouped by storm."""
+    """
+    Aggregates and renders a summary table grouped by individual storms.
+    """
     if final_df.empty:
         st.info("No data to summarize.")
         return
@@ -21,46 +25,38 @@ def display_summary_table(final_df, unit):
 
     df = final_df.copy()
     
-    # Safely extract Storm ID from filename (e.g., 'hrdobs_BERYL02L_2024...' -> 'BERYL02L')
     extracted_id = df['Constructed_File_Name'].str.extract(r'(?i)([A-Z]+\d{2}[A-Z])')[0]
     df['Storm_ID'] = extracted_id.str.upper().fillna(df['Storm'])
 
-    # Natural lifecycle order for categories
     cat_order = {c: i for i, c in enumerate(CAT_ORDER)}
 
     summary_data = []
 
-    # Sort to ensure chronological order for cycles
     df = df.sort_values(by=['Storm_ID', 'Cycle_Raw'])
 
     for storm_id, grp in df.groupby('Storm_ID', sort=False):
         year = grp['Year'].iloc[0]
         total_cycles = len(grp)
 
-        # Extract sorting keys
         start_cycle = grp['Cycle_Raw'].iloc[0]
         storm_num = str(storm_id)[-3:] if len(str(storm_id)) >= 3 else str(storm_id)
 
-        # Date Range
         c_min_disp = grp['Cycle_Display'].iloc[0].replace('\xa0', ' ')
         c_max_disp = grp['Cycle_Display'].iloc[-1].replace('\xa0', ' ')
         date_range = f"{c_min_disp} - {c_max_disp}" if c_min_disp != c_max_disp else c_min_disp
 
-        # Lat/Lon ranges
         lat_min, lat_max = grp['Lat'].min(), grp['Lat'].max()
         lat_range = f"{lat_min:.1f} - {lat_max:.1f}" if pd.notna(lat_min) else ""
 
         lon_min, lon_max = grp['Lon'].min(), grp['Lon'].max()
         lon_range = f"{lon_min:.1f} - {lon_max:.1f}" if pd.notna(lon_min) else ""
 
-        # Intensity/MSLP ranges
         int_min, int_max = grp['Intensity_ms'].min() * mult, grp['Intensity_ms'].max() * mult
         int_range = f"{int_min:.1f} - {int_max:.1f}" if pd.notna(int_min) else ""
 
         p_min, p_max = grp['MSLP_hPa'].min(), grp['MSLP_hPa'].max()
         p_range = f"{p_min:.1f} - {p_max:.1f}" if pd.notna(p_min) else ""
 
-        # SHIPS Ranges
         def get_rng(col, fmt="{:.1f}"):
             if col not in grp.columns: return ""
             cmin, cmax = grp[col].min(), grp[col].max()
@@ -72,15 +68,14 @@ def display_summary_table(final_df, unit):
         rh_range = get_rng('rhmd_pct', "{:.0f}")
         sst_range = get_rng('nsst_degc', "{:.2f}")
 
-        # Sorted Unique Categories
         unique_cats = grp['TC_Category'].dropna().unique()
         sorted_cats = sorted(unique_cats, key=lambda x: cat_order.get(x, 99))
         cats_str = "-".join(sorted_cats)
 
         row = {
             'Year': year,
-            '_Storm_Num': storm_num,       # Hidden column for sorting
-            '_Start_Cycle': start_cycle,   # Hidden column for sorting
+            '_Storm_Num': storm_num,       
+            '_Start_Cycle': start_cycle,   
             'Storm': storm_id,
             'Total Cycles': total_cycles,
             'Date Range': date_range,
@@ -95,7 +90,6 @@ def display_summary_table(final_df, unit):
             'MPI Range': mpi_range
         }
 
-        # Observations / Cycles Count for each Platform
         for g in EXPECTED_GROUPS:
             if g in grp.columns:
                 obs_sum = pd.to_numeric(grp[g], errors='coerce').fillna(0).sum()
@@ -111,12 +105,10 @@ def display_summary_table(final_df, unit):
 
     sum_df = pd.DataFrame(summary_data)
 
-    # --- Apply the new sorting logic ---
     if not sum_df.empty:
         sum_df = sum_df.sort_values(by=['Year', '_Storm_Num', '_Start_Cycle'], ascending=[True, True, True])
         sum_df = sum_df.drop(columns=['_Storm_Num', '_Start_Cycle']).reset_index(drop=True)
 
-    # Build MultiIndex structure dynamically
     multi_cols = []
     group_starts = []
     current_top = None
@@ -137,12 +129,10 @@ def display_summary_table(final_df, unit):
         elif raw_col == 'Intensity Range': tup = ('Basic Data', f'Intensity Range<br>({unit})')
         elif raw_col == 'MSLP Range': tup = ('Basic Data', 'MSLP Range<br>(hPa)')
         elif raw_col == 'Categories': tup = ('Basic Data', 'Intensity Categories')
-        # --- New SHIPS Parameters ---
         elif raw_col == 'Shear Range': tup = ('SHIPS Environment', 'Shear Range<br>(kt)')
         elif raw_col == 'RH Range': tup = ('SHIPS Environment', 'Mid RH Range<br>(%)')
         elif raw_col == 'SST Range': tup = ('SHIPS Environment', 'Navy SST Range<br>(deg C)')
         elif raw_col == 'MPI Range': tup = ('SHIPS Environment', 'MPI Range<br>(kt)')
-        # ----------------------------
         else:
             top = 'Basic Data'
             bottom = raw_col
@@ -167,7 +157,6 @@ def display_summary_table(final_df, unit):
     sum_df = sum_df[final_cols]
     sum_df.columns = pd.MultiIndex.from_tuples(multi_cols)
 
-    # Styling
     thick_sel = ", ".join([f"th:nth-child({idx}), td:nth-child({idx})" for idx in group_starts])
 
     styled_html = (
@@ -188,14 +177,15 @@ def display_summary_table(final_df, unit):
 
 
 def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
-    """Formats and renders the Pandas dataframe as a custom HTML block."""
+    """
+    Renders the detailed multi-index file table with hover tooltips and dynamic color formatting.
+    """
     
     final_df['Storm_Display'] = final_df.apply(lambda x: f"{x['Storm']}|||{x['Constructed_File_Name']}", axis=1)
 
     base_cols = ['Year', 'Storm_Display', 'Basin', 'Cycle_Display', 'Lat', 'Lon', 'Intensity_ms', 'MSLP_hPa', 'TC_Category']
     ships_cols = ['incv_kt', 'dtl_km', 'shrd_kt', 'shtd_deg', 'rhmd_pct', 'nsst_degc', 'nohc_kjcm2', 'vmpi_kt']
     
-    # Ensure SHIPS columns exist in the dataframe to avoid errors on older DBs
     ships_present = [c for c in ships_cols if c in final_df.columns]
     
     obs_groups = [g for g in EXPECTED_GROUPS if g != 'ships_params']
@@ -221,7 +211,6 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
         elif raw_col == 'Intensity_ms': tup = ('Basic Data', f'Intensity<br>({unit})'); fmt_map[tup] = '{:,.2f}'; numeric_cols.append(tup)
         elif raw_col == 'MSLP_hPa': tup = ('Basic Data', 'MSLP<br>(hPa)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
         elif raw_col == 'TC_Category': tup = ('Basic Data', 'Intensity Category')
-        # --- New SHIPS Parameters ---
         elif raw_col == 'incv_kt': tup = ('SHIPS Environment', 'Int Change<br>(kt)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
         elif raw_col == 'dtl_km': tup = ('SHIPS Environment', 'Dist to Land<br>(km)'); fmt_map[tup] = '{:,.0f}'; numeric_cols.append(tup)
         elif raw_col == 'shrd_kt': tup = ('SHIPS Environment', 'Shear Mag<br>(kt)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
@@ -230,10 +219,9 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
         elif raw_col == 'nsst_degc': tup = ('SHIPS Environment', 'Navy SST<br>(deg C)'); fmt_map[tup] = '{:,.2f}'; numeric_cols.append(tup)
         elif raw_col == 'nohc_kjcm2': tup = ('SHIPS Environment', 'Navy Ocn Heat Cont<br>(kJ/cm²)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
         elif raw_col == 'vmpi_kt': tup = ('SHIPS Environment', 'Max Pot Int<br>(kt)'); fmt_map[tup] = '{:,.1f}'; numeric_cols.append(tup)
-        # ----------------------------
         else:
             top = 'Basic Data'
-            bottom = raw_col  # Defensive default — prevents stale variable from a prior iteration
+            bottom = raw_col 
             if raw_col.startswith('dropsonde_'): top = 'Dropsondes'; bottom = raw_col.replace('dropsonde_', '').upper()
             elif raw_col.startswith('flight_level_hdobs_'): top = 'Flight Level'; bottom = raw_col.replace('flight_level_hdobs_', '').upper()
             elif raw_col.startswith('sfmr_'): top = 'SFMR'; bottom = raw_col.replace('sfmr_', '').upper()
@@ -290,4 +278,3 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
     )
     
     st.markdown(f"<div style='height: 700px; overflow-y: auto;'>{styled_html}</div>", unsafe_allow_html=True)
-    

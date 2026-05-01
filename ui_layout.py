@@ -1,46 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-ui_layout.py
-------------
-Page configuration, global CSS, and shared layout helpers.
+Purpose:
+    Configures the Streamlit page, sets global CSS styles, and provides shared layout helpers.
 
-Design tokens
--------------
-All visual constants (colours, font sizes, spacing) are defined once here
-as Python variables and injected into the global stylesheet via setup_page().
-Any new UI file should import what it needs from here rather than hardcoding
-values inline.  When a colour or size needs to change, this is the only file
-that requires editing.
-
-Colour palette
-  CLR_PRIMARY          – black; tab borders, primary button outlines, plot axis lines and text
-  CLR_ACCENT           – dark grey; secondary button fill, multiselect chip background
-  CLR_MUTED            – mid grey; disabled widget labels, missing inventory items
-  CLR_SUBTLE           – light grey; footer text, subtitle text
-  CLR_SUCCESS          – green; present inventory items
-  CLR_EXTRA            – blue; unexpected/extra inventory items
-  CLR_BG_HEADER        – off-white; table header background
-  CLR_PLOT_BG          – white; 2D plot canvas and paper background
-  CLR_PLOT_GRID        – light grey; 2D plot axis grid lines
-  CLR_BTN_LIGHT_BG     – light-gray shading
-  CLR_BTN_LIGHT_BORDER – dark-gray border
-  CLR_BTN_LIGHT_TEXT   – dark text
-
-Font sizes (px)
-  FS_LABEL      – 16   sidebar section labels, slider labels
-  FS_BODY       – 13   widget labels, table cells, dropdown options, chip text
-  FS_BUTTON     – 12   secondary button text
-  FS_MICRO      – 11   ultra-compact button labels (auto-fit domain section)
-  FS_TABLE      – 14   metadata/inventory HTML table rows
-  FS_TITLE      – 32   page title
-  FS_SUBTITLE   – 14   page subtitle
-  FS_FOOTER     – 12   footer copyright line
-  FS_PLOT_TITLE – 24   main title above Plotly figures
-  FS_PLOT_AXIS  – 18   axis labels (e.g., Latitude, Longitude) on Plotly figures
-  FS_PLOT_TICK  – 14   numeric tick marks on Plotly axes
-
-Other controls
-  TARGET_PLOT_TICKS - number of horizontal ticks/grid lines to plot in 2d/3d plots
+Functions/Classes:
+    - setup_page: Initializes page config and injects global CSS rules.
+    - apply_viewer_compaction_css: Tightens select-box and label sizes for the Viewer tab.
+    - render_header: Renders the top title bar and separator.
+    - render_footer: Renders the copyright line at the bottom of every page.
 """
 
 import streamlit as st
@@ -50,7 +17,7 @@ from datetime import datetime
 # Design tokens — edit here, applies everywhere
 # ---------------------------------------------------------------------------
 
-# Colours
+# Color palette
 CLR_PRIMARY   = "#000000"
 CLR_ACCENT    = "#555555"
 CLR_MUTED     = "#999999"   
@@ -102,7 +69,9 @@ PLOT_TITLE_Y = 0.96
 # ---------------------------------------------------------------------------
 
 def setup_page():
-    """Initialize page config and inject all global CSS rules."""
+    """
+    Initializes page config and injects global CSS rules.
+    """
     st.set_page_config(
         page_title="HRDOBS Dataset Explorer & Visualizer | Altug Aksoy",
         page_icon="🌀",
@@ -281,8 +250,7 @@ def setup_page():
 
 def apply_viewer_compaction_css():
     """
-    Tightens select-box and label sizes for the denser Viewer tab layout.
-    Called once at the top of render_viewer_tab().
+    Tightens select-box and label sizes for the Viewer tab layout.
     """
     st.markdown(f"""
     <style>
@@ -312,7 +280,9 @@ def apply_viewer_compaction_css():
 # ---------------------------------------------------------------------------
 
 def render_header():
-    """Renders the top title bar and separator."""
+    """
+    Renders the top title bar and separator.
+    """
     st.markdown(f"""
     <div style='text-align: center; margin-bottom: 10px;'>
         <div style='color: {CLR_PRIMARY}; margin: 0; padding: 0;
@@ -328,7 +298,9 @@ def render_header():
 
 
 def render_footer():
-    """Renders the copyright line at the bottom of every page."""
+    """
+    Renders the copyright line at the bottom of every page.
+    """
     st.markdown("---")
     st.markdown(
         f"<div style='text-align: center; color: {CLR_SUBTLE}; "
@@ -337,4 +309,3 @@ def render_footer():
         f"University of Miami / Rosenstiel School / Cooperative Institute for Marine and Atmospheric Studies</div>",
         unsafe_allow_html=True
     )
-    

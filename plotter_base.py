@@ -1,9 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-plotter_base.py
----------------
-Base class for StormPlotter. Contains the constructor, all shared helper
-methods, and the variable/coordinate introspection utilities.
+Purpose:
+    Provides the base class for the StormPlotter, handling initialization, shared state, data filtering, and variable introspection.
+
+Functions/Classes:
+    - StormPlotterBase: Core class providing state and utilities for all rendering methods.
+    - StormPlotterBase.__init__: Initializes the base plotter state.
+    - StormPlotterBase._get_color_setup: Determines the colorscale configuration for a given variable.
+    - StormPlotterBase._ensure_derived_spatial_coords: Dynamically calculates spatial coordinates if missing.
+    - StormPlotterBase.sort_variables: Sorts variables for UI dropdowns.
+    - StormPlotterBase.get_plottable_variables: Retrieves a list of variables suitable for plotting.
+    - StormPlotterBase.get_coordinate_variables: Retrieves a list of coordinate variables.
+    - StormPlotterBase._get_var_display_name: Resolves the human-readable display name for a variable.
+    - StormPlotterBase._format_storm_subtitle: Formats the storm identifier and datetime for subtitles.
+    - StormPlotterBase._format_title: Constructs the primary HTML title block for plots.
+    - StormPlotterBase._title_top_margin: Calculates the required top margin based on title lines.
+    - StormPlotterBase._convert_time_to_relative: Converts epoch times to relative seconds from cycle center.
+    - StormPlotterBase._apply_time_axis: Applies relative time formatting to plot axes.
+    - StormPlotterBase._apply_filters: Subsets the dataframe based on user constraints.
+    - StormPlotterBase._prepare_colorscale: Prepares the final color array and bounds for plotting.
 """
 
 import math
@@ -38,12 +53,18 @@ class StormPlotterBase:
     """
 
     def __init__(self, data_dict, track_data, metadata, var_attrs):
+        """
+        Initializes the base plotter state.
+        """
         self.data      = data_dict
         self.track     = track_data
         self.metadata  = metadata
         self.var_attrs = var_attrs
 
     def _get_color_setup(self, group_name, variable, color_scale):
+        """
+        Determines the colorscale configuration for a given variable.
+        """
         var_conf  = GLOBAL_VAR_CONFIG.get(variable.lower(), {})
         cmap      = var_conf.get('colorscale', 'Jet')
         cmid_conf = var_conf.get('cmid')
@@ -96,7 +117,6 @@ class StormPlotterBase:
             return
         df = self.data[group_name]
         
-        # Ensure we don't recalculate if all 5 spatial columns already exist
         expected_cols = ['dist_from_center', 'azimuth_north', 'azimuth_motion', 'azimuth_shear_deep', 'azimuth_shear_vortex']
         if all(col in df.columns for col in expected_cols):
             return
@@ -176,9 +196,7 @@ class StormPlotterBase:
         az_north   = np.degrees(np.arctan2(x_km, y_km)) % 360
         az_motion  = (az_north - mean_heading) % 360
         
-        # =========================================================
-        # --- NEW: SHIPS SHEAR AZIMUTH CALCULATION ---
-        # =========================================================
+        # SHIPS Shear Azimuth Calculation
         az_shear_deep = np.full_like(az_north, np.nan)
         az_shear_vortex = np.full_like(az_north, np.nan)
         
@@ -190,36 +208,34 @@ class StormPlotterBase:
                 
             if 'sddc_deg' in ships_df.columns and pd.notna(ships_df['sddc_deg'].iloc[0]):
                 az_shear_vortex = (az_north - float(ships_df['sddc_deg'].iloc[0])) % 360
-        # =========================================================
 
         nan_mask   = (~np.isfinite(obs_epochs) | df[lat_c].isna().values | df[lon_c].isna().values)
         
-        dist[nan_mask]      = np.nan
-        az_north[nan_mask]  = np.nan
-        az_motion[nan_mask] = np.nan
+        dist[nan_mask]            = np.nan
+        az_north[nan_mask]        = np.nan
+        az_motion[nan_mask]       = np.nan
         az_shear_deep[nan_mask]   = np.nan
         az_shear_vortex[nan_mask] = np.nan
 
-        df['dist_from_center'] = dist
-        df['azimuth_north']    = az_north
-        df['azimuth_motion']   = az_motion
+        df['dist_from_center']     = dist
+        df['azimuth_north']        = az_north
+        df['azimuth_motion']       = az_motion
         df['azimuth_shear_deep']   = az_shear_deep
         df['azimuth_shear_vortex'] = az_shear_vortex
         
         if group_name not in self.var_attrs:
             self.var_attrs[group_name] = {}
             
-        self.var_attrs[group_name]['dist_from_center'] = {'units': 'km', 'long_name': 'Distance from Storm Center (Computed)'}
-        self.var_attrs[group_name]['azimuth_north']    = {'units': 'deg', 'long_name': 'Azimuth from North (Computed)'}
-        self.var_attrs[group_name]['azimuth_motion']   = {'units': 'deg', 'long_name': 'Azimuth from Storm Motion (Computed)'}
+        self.var_attrs[group_name]['dist_from_center']     = {'units': 'km', 'long_name': 'Distance from Storm Center (Computed)'}
+        self.var_attrs[group_name]['azimuth_north']        = {'units': 'deg', 'long_name': 'Azimuth from North (Computed)'}
+        self.var_attrs[group_name]['azimuth_motion']       = {'units': 'deg', 'long_name': 'Azimuth from Storm Motion (Computed)'}
         self.var_attrs[group_name]['azimuth_shear_deep']   = {'units': 'deg', 'long_name': 'Azimuth from 850-200 hPa Shear (Computed)'}
         self.var_attrs[group_name]['azimuth_shear_vortex'] = {'units': 'deg', 'long_name': 'Azimuth from Vortex-Removed 850-200 hPa Shear (Computed)'}
 
     def sort_variables(self, var_list, group_name):
         """
-        Unified sorting method for all UI dropdowns.
-        Ensures standard variables come first, standard coordinates (Lat/Lon) second, 
-        and derived coordinates (Distance, Azimuths) absolute last.
+        Sorts variables for UI dropdowns.
+        Ensures standard variables come first, standard coordinates second, and derived coordinates last.
         """
         def _sort_key(c):
             c_lower = c.lower()
@@ -228,23 +244,21 @@ class StormPlotterBase:
             is_coord   = cfg.get('is_coord', False)
             order      = cfg.get('sort_order', 999)
             
-            if is_derived and is_coord:
-                tier = 3
-            elif is_coord:
-                tier = 2
-            elif is_derived:
-                tier = 1
-            else:
-                tier = 0
+            if is_derived and is_coord: tier = 3
+            elif is_coord: tier = 2
+            elif is_derived: tier = 1
+            else: tier = 0
                 
             disp = self._get_var_display_name(group_name, c)
             return f"{tier}_{order:03d}_{disp}"
             
-        # Use dict.fromkeys to strip duplicates before sorting
         unique_vars = list(dict.fromkeys(var_list))
         return sorted(unique_vars, key=_sort_key)
 
     def get_plottable_variables(self, sel_group, active_z_col=None, exclude_vectors=False):
+        """
+        Retrieves a list of variables suitable for plotting.
+        """
         if sel_group not in self.data:
             return []
         self._ensure_derived_spatial_coords(sel_group)
@@ -253,23 +267,21 @@ class StormPlotterBase:
         valid_cols = []
 
         for col in df.columns:
-            if active_z_col and col == active_z_col:
-                continue
+            if active_z_col and col == active_z_col: continue
             col_lower = col.lower()
             cfg = GLOBAL_VAR_CONFIG.get(col_lower, {})
-            if cfg.get('hide', False):
-                continue
-            if exclude_vectors and cfg.get('is_vector', False):
-                continue
-            if col_lower.endswith('err'):
-                continue
-            if df[col].dtype == 'object':
-                continue
+            if cfg.get('hide', False): continue
+            if exclude_vectors and cfg.get('is_vector', False): continue
+            if col_lower.endswith('err'): continue
+            if df[col].dtype == 'object': continue
             valid_cols.append(col)
 
         return self.sort_variables(valid_cols, sel_group)
 
     def get_coordinate_variables(self, group_name):
+        """
+        Retrieves a list of coordinate variables.
+        """
         if group_name not in self.data:
             return []
         self._ensure_derived_spatial_coords(group_name)
@@ -287,15 +299,16 @@ class StormPlotterBase:
         return self.sort_variables(valid_coords, group_name)
 
     def _get_var_display_name(self, group_name, variable):
+        """
+        Resolves the human-readable display name for a variable.
+        """
         if variable.lower() == 'time':
             return "Time (relative to cycle center)"
             
-        # 1. Try to get the explicit display name from your config first
         var_conf = GLOBAL_VAR_CONFIG.get(variable.lower(), {})
         if 'display_name' in var_conf:
             return var_conf['display_name']
 
-        # 2. Fall back to HDF5 metadata
         meta      = self.var_attrs.get(group_name, {}).get(variable, {})
         long_name = decode_metadata(meta.get('long_name', ''))
 
@@ -306,7 +319,6 @@ class StormPlotterBase:
             else:
                 long_name = variable.replace('_', ' ').title()
         else:
-            # Enforce Title Case on metadata long names, handling acronyms like "3D"
             words = long_name.split()
             long_name = ' '.join(
                 word if word.isupper() or any(char.isdigit() for char in word) 
@@ -320,6 +332,9 @@ class StormPlotterBase:
         return long_name
 
     def _format_storm_subtitle(self):
+        """
+        Formats the storm identifier and datetime for subtitles.
+        """
         info     = self.metadata.get('info', {})
         storm_id = info.get('storm_id', '').strip()
         dt_raw   = info.get('storm_datetime', '').strip()
@@ -341,6 +356,9 @@ class StormPlotterBase:
         return storm_id
 
     def _format_title(self, group_name, variable, constraint_lbl):
+        """
+        Constructs the primary HTML title block for plots.
+        """
         parts = group_name.split('_')
 
         if parts[0].lower() == 'track':
@@ -382,12 +400,18 @@ class StormPlotterBase:
         return "<br>" + "<br>".join(lines)
 
     def _title_top_margin(self, title: str, gap: int = 45) -> int:
+        """
+        Calculates the required top margin based on title lines.
+        """
         n_lines = title.count('<br>') + 1
         height  = FS_PLOT_TITLE
         height += max(0, n_lines - 1) * FS_PLOT_AXIS
         return height + gap
 
     def _convert_time_to_relative(self, vals):
+        """
+        Converts epoch times to relative seconds from cycle center.
+        """
         from datetime import datetime, timezone
         info      = self.metadata.get('info', {})
         epoch_raw = info.get('storm_epoch', '')
@@ -436,6 +460,9 @@ class StormPlotterBase:
         return rel_vals, tick_vals, tick_labels
 
     def _apply_time_axis(self, var_col, vals, axis_dict, is_x=True):
+        """
+        Applies relative time formatting to plot axes.
+        """
         if var_col.lower() != 'time':
             return vals
         result = self._convert_time_to_relative(vals)
@@ -451,6 +478,9 @@ class StormPlotterBase:
 
     def _apply_filters(self, df, req_cols=None, z_con=None, time_bounds=None, 
                        thinning_pct=None, domain_bounds=None, filter_spatial=True):
+        """
+        Subsets the dataframe based on user constraints.
+        """
         plot_df = df.copy()
         
         if req_cols:
@@ -479,9 +509,7 @@ class StormPlotterBase:
             else:
                 unit_str = z_con.get('units', 'm')
                 
-            # Add exactly one space before the unit
             unit_suffix = f" {unit_str}" if unit_str else ""
-            
             constraint_lbl = f"Vertical Level: {min_val} - {max_val}{unit_suffix}"    
         if plot_df.empty: return plot_df, constraint_lbl
 
@@ -499,7 +527,7 @@ class StormPlotterBase:
             if 'z_min' in domain_bounds and domain_bounds.get('z_col') in plot_df.columns:
                 z_b_col = domain_bounds['z_col']
                 z_b_vals = plot_df[z_b_col] / 100.0 if domain_bounds.get('z_convert') else plot_df[z_b_col]
-                # FIX: Explicitly allow NaNs to survive the bounding box
+                # Explicitly allow NaNs to survive the vertical bounding box filter
                 z_mask = (z_b_vals >= domain_bounds['z_min']) & (z_b_vals <= domain_bounds['z_max'])
                 z_mask = z_mask | z_b_vals.isna()
                 plot_df = plot_df[z_mask]
@@ -520,6 +548,9 @@ class StormPlotterBase:
         return plot_df, constraint_lbl
     
     def _prepare_colorscale(self, group_name, variable, plot_df, color_scale, custom_colorscale=None, is_track=False):
+        """
+        Prepares the final color array and bounds for plotting.
+        """
         import numpy as np
         from config import GLOBAL_VAR_CONFIG
         
@@ -578,4 +609,3 @@ class StormPlotterBase:
                 cb_ticktext = [f"1e{int(p)}" if p < -3 or p > 3 else f"{10**p:g}" for p in cb_tickvals]
 
         return color_array, cmap, cmin, cmax, cmid, cb_tickvals, cb_ticktext, cb_title, display_name, base_color_array
-    

@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-config.py
-----------
-Global configuration parameters shared by all other functions.
+Purpose:
+    Defines the global configuration parameters, metadata mappings, and visual styling constants used throughout the application.
+
+Functions/Classes:
+    - None
 """
 
 EXPECTED_GROUPS = [

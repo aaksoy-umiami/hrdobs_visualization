@@ -1,4 +1,18 @@
 # -*- coding: utf-8 -*-
+"""
+Purpose:
+    Handles data loading, metadata extraction, and transformation of HDF5 and CSV files into standardized formats for the application.
+
+Functions/Classes:
+    - decode_metadata: Cleans HDF5 byte strings and arrays.
+    - get_cf_epoch_offset: Parses CF-compliant time unit strings.
+    - get_basin_from_filename: Extracts the basin code from a filename.
+    - load_inventory_db: Loads and standardizes the global dataset CSV.
+    - load_data_from_h5: Parses datasets and metadata from an HDF5 file.
+    - inject_derived_fields: Adds derived metrics and coordinates to data.
+    - compute_global_domain: Calculates a bounding box across all spatial data.
+    - compute_vert_bounds: Computes vertical slider bounds for all groups.
+"""
 
 import pandas as pd
 import numpy as np
@@ -17,9 +31,9 @@ from config import (
 
 def decode_metadata(val):
     """
-    Cleans up byte strings, null-padded strings, or arrays from HDF5 metadata.
+    Cleans HDF5 byte strings and arrays.
     """
-    # --- V11 FIX: Properly join multi-item lists instead of just taking index 0 ---
+    # Safely process multi-item arrays in HDF5 extraction
     if isinstance(val, (np.ndarray, list)):
         if len(val) == 0:
             return ""
@@ -31,9 +45,8 @@ def decode_metadata(val):
                 else:
                     parts.append(str(elem).strip())
             return ", ".join(p for p in parts if p)
-        # If it's just a single-element array, extract it and process normally
+        # Process single-element array normally
         val = val[0]
-    # ------------------------------------------------------------------------------
 
     if isinstance(val, (bytes, np.bytes_, bytearray)):
         try:
@@ -51,7 +64,7 @@ def decode_metadata(val):
 
 def get_cf_epoch_offset(time_unit_str):
     """
-    Parses a CF-compliant time unit string and returns the offset from Unix 1970 in seconds.
+    Parses CF-compliant time unit strings.
     """
     if not isinstance(time_unit_str, str): return 0.0
     
@@ -67,7 +80,7 @@ def get_cf_epoch_offset(time_unit_str):
 
 def get_basin_from_filename(filename):
     """
-    Extracts the basin code dynamically from the filename prefix.
+    Extracts the basin code from a filename.
     """
     if not isinstance(filename, str): return "Unknown"
     prefix = filename.split('.')[0]
@@ -81,7 +94,7 @@ def get_basin_from_filename(filename):
 @st.cache_data
 def load_inventory_db(db_path):
     """
-    Loads and standardizes the global dataset CSV inventory.
+    Loads and standardizes the global dataset CSV.
     """
     if not os.path.exists(db_path):
         return None
@@ -122,12 +135,11 @@ def load_inventory_db(db_path):
 @st.cache_data
 def load_data_from_h5(file_bytes):
     """
-    Loads HDF5 file contents from memory, parses datasets, attributes, 
-    and metadata, and returns a standardized data package.
+    Parses datasets and metadata from an HDF5 file.
     """
     def _safe_val(val):
         try:
-            # --- V11 FIX: Handle multi-item arrays in HDF5 extraction ---
+            # Handle multi-item arrays securely
             if hasattr(val, '__len__') and not isinstance(val, (str, bytes)):
                 if len(val) == 0:
                     return ""
@@ -139,9 +151,8 @@ def load_data_from_h5(file_bytes):
                         else:
                             parts.append(str(elem).strip())
                     return ", ".join(parts)
-                # If length is exactly 1, extract it safely
+                # Extract array with exact length of 1
                 val = val.flat[0] if hasattr(val, 'flat') else val[0]
-            # ------------------------------------------------------------
             
             if isinstance(val, (bytes, bytearray)):
                 val = val.decode('utf-8', errors='replace').rstrip('\x00').strip()
@@ -267,9 +278,7 @@ def load_data_from_h5(file_bytes):
 
 def inject_derived_fields(raw_data_pack):
     """
-    Post-load enrichment: adds SFMR altitude, derived wind speeds,
-    propagated error estimates, vector dummy variables, and distance
-    from storm center in-place.
+    Adds derived metrics and coordinates to data.
     """
     def _find_track_grp(data):
         for pref in ('track_spline_track', 'track_best_track'):
@@ -285,7 +294,7 @@ def inject_derived_fields(raw_data_pack):
             if v > 1.9e13:
                 dt = datetime.strptime(f"{v:.0f}", '%Y%m%d%H%M%S')
                 return dt.replace(tzinfo=timezone.utc).timestamp()
-            # Dynamic CF subtraction!
+            # Dynamic CF subtraction
             return float(v) - offset
         except Exception:
             return np.nan
@@ -424,9 +433,7 @@ def inject_derived_fields(raw_data_pack):
 
 def compute_global_domain(data_pack):
     """
-    Scans all groups for lat/lon and stores a tight square bounding box
-    in data_pack['global_domain']. Called at file load; also safe to call
-    lazily if missing.
+    Calculates a bounding box across all spatial data.
     """
     all_lats, all_lons = [], []
     for grp, df in data_pack['data'].items():
@@ -469,8 +476,7 @@ def compute_global_domain(data_pack):
 
 def compute_vert_bounds(data_pack):
     """
-    Pre-computes vertical (height/pressure) slider bounds for every group and column.
-    Stores the results in data_pack['vert_bounds'].
+    Computes vertical slider bounds for all groups.
     """
     bounds = {}
     for grp, df in data_pack['data'].items():
@@ -514,4 +520,3 @@ def compute_vert_bounds(data_pack):
         if grp_bounds:
             bounds[grp] = grp_bounds
     data_pack['vert_bounds'] = bounds
-    

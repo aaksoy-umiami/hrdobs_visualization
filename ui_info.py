@@ -1,54 +1,50 @@
 # -*- coding: utf-8 -*-
 """
-ui_info.py
-----------
-Info tab for the HRDOBS Dataset Explorer & Visualizer.
-Provides sub-sections rendered from sidebar navigation buttons:
-  • Help: How To Use This App
-  • Additional Sources
-  • About: Author & Citation
+Purpose:
+    Renders the static informational sections of the application, including usage guides, data source attributions, and author details.
+
+Functions/Classes:
+    - _apply_info_sidebar_css: Injects specific CSS styling for the navigation buttons in the Info tab sidebar.
+    - render_info_tab: Serves as the main entry point to route the user to the selected sub-tab section.
+    - _render_about: Displays application background, citation formatting, and author information.
+    - _render_sources: Lists and links to the upstream meteorological data sources used in the dataset.
+    - _render_usage: Provides a functional guide on how to navigate the app's tabs and controls.
 """
 
 import streamlit as st
 from ui_layout import CLR_PRIMARY, CLR_SUBTLE, CLR_ACCENT, FS_BODY
 
 
-# ---------------------------------------------------------------------------
-# Sidebar button style for Info tab
-# ---------------------------------------------------------------------------
-
 def _apply_info_sidebar_css():
+    """
+    Injects specific CSS styling for the navigation buttons in the Info tab sidebar.
+    """
     st.markdown(f"""
     <style>
-        /* PRIMARY (selected): white background, black text/border */
         [data-testid="stSidebar"] button[kind="primary"] {{
             background-color: #ffffff !important;
             color: {CLR_PRIMARY} !important;
             border: 3px solid {CLR_PRIMARY} !important;
             font-weight: 600;
-            width: 100% !important; /* Keep active button full width */
+            width: 100% !important; 
         }}
-        /* SECONDARY (unselected): black background, white text */
         [data-testid="stSidebar"] button[kind="secondary"] {{
             background-color: {CLR_PRIMARY} !important;
             color: #ffffff !important;
             border: 3px solid {CLR_PRIMARY} !important;
             font-weight: 600;
             
-            /* Make it slightly smaller vertically */
             padding: 4px 10px !important; 
             min-height: 32px !important;
             height: auto !important;
             border-radius: 8px !important;
             
-            /* Make it slightly smaller horizontally and center it */
             width: 90% !important; 
             margin-left: 5% !important;
             margin-right: 5% !important;
             display: block !important;
         }}
         
-        /* Drop the font size of the inactive button by 1px */
         [data-testid="stSidebar"] button[kind="secondary"] * {{
             font-size: calc({FS_BODY}px - 1px) !important;
             color: #ffffff !important;
@@ -57,11 +53,10 @@ def _apply_info_sidebar_css():
     """, unsafe_allow_html=True)
 
 
-# ---------------------------------------------------------------------------
-# Main entry point
-# ---------------------------------------------------------------------------
-
 def render_info_tab():
+    """
+    Serves as the main entry point to route the user to the selected sub-tab section.
+    """
     _apply_info_sidebar_css()
 
     if 'info_sub_tab' not in st.session_state:
@@ -108,11 +103,10 @@ def render_info_tab():
         _render_about()
 
 
-# ---------------------------------------------------------------------------
-# About section
-# ---------------------------------------------------------------------------
-
 def _render_about():
+    """
+    Displays application background, citation formatting, and author information.
+    """
     st.markdown("### About")
 
     st.markdown("""
@@ -197,11 +191,10 @@ Scientist, *CIMAS/Rosenstiel School, University of Miami*
     """)
 
 
-# ---------------------------------------------------------------------------
-# Additional Sources section
-# ---------------------------------------------------------------------------
-
 def _render_sources():
+    """
+    Lists and links to the upstream meteorological data sources used in the dataset.
+    """
     st.markdown("### Upstream Data Sources")
 
     st.markdown("""
@@ -215,7 +208,6 @@ def _render_sources():
 
     st.markdown("---")
 
-    # Source 1: Aircraft Data
     st.markdown("#### ✈️ 1. Main Aircraft Reconnaissance Data")
     st.markdown("""
     **Description:** This represents the core scientific payload of the dataset. It includes high-resolution,
@@ -226,7 +218,6 @@ def _render_sources():
     **Origin:** Collected and hosted by the **[NOAA/AOML Hurricane Research Division (HRD)](https://www.aoml.noaa.gov/data-products/#hurricanedata)** via their official webpage and data servers.
     """)
 
-    # Source 2: HURDAT2
     st.markdown("#### 🌪️ 2. NHC HURDAT2 (Best Track)")
     st.markdown("""
     **Description:** The official historical "Best Track" database for the North Atlantic basin tropical cyclones. HURDAT2 provides 
@@ -236,7 +227,6 @@ def _render_sources():
     **Origin:** Maintained and published by the **[National Hurricane Center (NHC) Data Archive](https://www.nhc.noaa.gov/data/#hurdat)**.
     """)
 
-    # Source 3: Vortex Messages
     st.markdown("#### 📡 3. Vortex Data Messages (VDM)")
     st.markdown("""
     **Description:** Standardized, operational messages transmitted in real-time by reconnaissance aircraft when they 
@@ -247,7 +237,6 @@ def _render_sources():
     **Origin:** Extracted from the **[NHC's Aircraft Reconnaissance Archive](https://verif.rap.ucar.edu/jntweb/hurricanes-beta/structure/vortex/vdm_data/)**.
     """)
 
-    # Source 4: Spline Tracks
     st.markdown("#### 🗺️ 4. High-Resolution Spline Tracks")
     st.markdown("""
     **Description:** Because HURDAT2 is limited to 6-hour intervals, it is often insufficient for highly granular 
@@ -257,7 +246,6 @@ def _render_sources():
     **Origin:** Hosted and provided by the **[NOAA/AOMLHRD](https://www.aoml.noaa.gov/data-products/#hurricanedata)** via their official webpage and data servers.
     """)
 
-    # Source 5: SHIPS
     st.markdown("#### 📊 5. Statistical Hurricane Intensity Prediction Scheme (SHIPS)")
     st.markdown("""
     **Description:** The SHIPS dataset evaluates synoptic and environmental diagnostics along the track of a tropical 
@@ -269,11 +257,10 @@ def _render_sources():
     """)
 
 
-# ---------------------------------------------------------------------------
-# How To Use section
-# ---------------------------------------------------------------------------
-
 def _render_usage():
+    """
+    Provides a functional guide on how to navigate the app's tabs and controls.
+    """
     st.markdown("### How To Use This App")
 
     st.markdown("""

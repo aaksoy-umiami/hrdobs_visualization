@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-plotter_radial_height.py
-------------------------
-Radial-Height Profile plotting methods for StormPlotter.
+Purpose:
+    Provides methods for generating 2D radial-height profile plots, including decomposition of wind vectors.
+
+Functions/Classes:
+    - RadialHeightMixin: Mixin class for generating radial-height profile plots.
+    - RadialHeightMixin._decompose_radial_tangential: Converts U and V wind components into Radial and Tangential components.
+    - RadialHeightMixin.plot_radial_height: Generates a 2D radial-height profile plot.
 """
 
 import math
@@ -41,6 +45,9 @@ class RadialHeightMixin:
                            marker_size_pct=100, vec_scale=1.0, time_bounds=None,
                            color_scale="Linear scale", rh_z_col=None,
                            custom_colorscale=None):
+        """
+        Generates a 2D radial-height profile plot.
+        """
                            
         if group_name not in self.data:
             return None, None
@@ -71,7 +78,6 @@ class RadialHeightMixin:
         if plot_df.empty:
             return None, None
 
-        # This method uses `_to_storm_relative`, which is safely inherited from StormRelativeMixin!
         result = self._to_storm_relative(
             plot_df[lon_col].values, plot_df[lat_col].values,
             plot_df[time_col].values, sr_track_grp, "Relative to North"
@@ -182,7 +188,6 @@ class RadialHeightMixin:
         z_disp_label = 'Pressure' if is_pres else 'Height'
         z_unit_str   = z_units
 
-        # --- HOVER DATA EXTRACTION ---
         t_vals = plot_df[time_col].values
         offset = self.metadata.get('time_offset_seconds', 0.0)
         
@@ -205,9 +210,6 @@ class RadialHeightMixin:
 
         fig = go.Figure()
 
-        # =========================================================================
-        # REFACTORED PLOTTING BLOCK
-        # =========================================================================
         is_vector = variable.lower() in ['wind_vec_hz', 'wind_vec_3d']
         
         if is_vector and 'u' in cols_lower and 'v' in cols_lower:
@@ -257,7 +259,6 @@ class RadialHeightMixin:
                 hoverinfo='text',
                 showlegend=False,
             ))
-        # =========================================================================
 
         nice_title = self._format_title(group_name, variable,
                                         "Radial-Height Profile | Storm-Relative")
@@ -290,4 +291,3 @@ class RadialHeightMixin:
         )
 
         return fig, plot_df
-    

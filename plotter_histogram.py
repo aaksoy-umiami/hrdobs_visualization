@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-plotter_histogram.py
---------------------
-Histogram plotting methods for StormPlotter (1D and 2D).
+Purpose:
+    Provides methods for computing and rendering 1D and 2D histograms, KDE overlays, and marginal distributions.
+
+Functions/Classes:
+    - HistogramMixin: Mixin class for generating 1D and 2D histogram plots.
+    - HistogramMixin.plot_histogram: Generates a 1D histogram or KDE density line plot.
+    - HistogramMixin._compute_2d_normalization: Calculates bin statistics and normalizations for 2D histograms.
+    - HistogramMixin.plot_histogram_2d: Generates a 2D histogram, heatmap, or polar bar chart with optional KDE and marginals.
 """
 
 import numpy as np
@@ -21,6 +26,9 @@ class HistogramMixin:
     def plot_histogram(self, group_name, variable, nbins=None,
                        normalization="None", reverse_axes=False,
                        render_as_line=False, show_kde=False):
+        """
+        Generates a 1D histogram or KDE density line plot.
+        """
         if group_name not in self.data:
             return None
 
@@ -149,6 +157,9 @@ class HistogramMixin:
         return fig
 
     def _compute_2d_normalization(self, x_vals, y_vals, nbinsx, nbinsy, normalization):
+        """
+        Calculates bin statistics and normalizations for 2D histograms.
+        """
         nx = nbinsx if nbinsx is not None else DEFAULT_HIST_BINS
         ny = nbinsy if nbinsy is not None else DEFAULT_HIST_BINS
 
@@ -185,6 +196,9 @@ class HistogramMixin:
                           normalization="None", custom_colorscale=None,
                           coordinate_system="Cartesian", show_kde=False,
                           show_marginals=False, map_option="None"):
+        """
+        Generates a 2D histogram, heatmap, or polar bar chart with optional KDE and marginals.
+        """
         if group_name not in self.data:
             return None
 
@@ -374,7 +388,7 @@ class HistogramMixin:
                         lon_min, lon_max = (np.min(x_valid), np.max(x_valid)) if is_x_lon else (np.min(y_valid), np.max(y_valid))
                         domain_bounds = {'lat_min': lat_min, 'lat_max': lat_max, 'lon_min': lon_min, 'lon_max': lon_max}
                         
-                        from basemap import get_basemap_traces
+                        from plotter_basemap import get_basemap_traces
                         traces = get_basemap_traces(domain_bounds)
                         for t in traces:
                             if not is_x_lon:
@@ -382,7 +396,6 @@ class HistogramMixin:
                             fig.add_trace(t)
                             fig.data = (fig.data[-1],) + fig.data[:-1]
 
-                        # Enforce data limits so Plotly doesn't zoom out to the basemap
                         fig.update_layout(
                             xaxis_range=[x_edges[0], x_edges[-1]],
                             yaxis_range=[y_edges[0], y_edges[-1]]
@@ -481,4 +494,3 @@ class HistogramMixin:
             margin=dict(l=50, r=plot_margin_r, t=plot_margin_t, b=60),
         )
         return fig
-    

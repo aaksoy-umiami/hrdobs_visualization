@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-hrdobs_companion.py
---------------
-App entry point: configures the page, detects viewport width, and routes between the four main tabs.
+Purpose:
+    Serves as the main entry point for the HRDOBS Streamlit application, configuring the page and routing to the main tabs.
+
+Functions/Classes:
+    - _is_mobile: Checks if the user is accessing the app via a mobile device.
+    - _show_mobile_warning: Displays a warning dialog for mobile users regarding layout and performance.
 """
 
 import streamlit as st
@@ -36,11 +39,17 @@ if _JS_EVAL_AVAILABLE and 'is_mobile_device' not in st.session_state:
         st.session_state.is_mobile_device = False
 
 def _is_mobile():
+    """
+    Checks if the user is accessing the app via a mobile device.
+    """
     return st.session_state.get("is_mobile_device", False)
 
 # === MOBILE WARNING (one-time dialog) ===
 @st.dialog("📱 Mobile Device Detected")
 def _show_mobile_warning():
+    """
+    Displays a warning dialog for mobile users regarding layout and performance.
+    """
     st.write("This app involves complex interactive visualizations that are best experienced on a **Desktop or Laptop**.")
     st.write("You may encounter layout issues or reduced performance on smaller screens.")
     if st.button("I Understand"):
@@ -54,7 +63,7 @@ if _is_mobile() and 'mobile_warning_acknowledged' not in st.session_state:
 if 'selected_tab_index' not in st.session_state:
     st.session_state.selected_tab_index = 0
 
-# Updated layout for 4 columns
+# Layout for 4 columns
 tab_col_space1, tab_col1, tab_col2, tab_col3, tab_col4, tab_col_space2 = st.columns([0.05, 1, 1, 1, 0.6, 0.05])
 
 with tab_col1:
@@ -77,7 +86,7 @@ with tab_col4:
         st.session_state.selected_tab_index = 3
         st.rerun()
 
-# Route to the appropriate tab module based on the new indices
+# Route to the appropriate tab module based on the selected indices
 if st.session_state.selected_tab_index == 0:
     render_explorer_tab()
 elif st.session_state.selected_tab_index == 1:

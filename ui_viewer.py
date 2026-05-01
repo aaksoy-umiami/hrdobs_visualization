@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-ui_viewer.py
-------------
-File Data Viewer tab entry point.
+Purpose:
+    Serves as the entry point for the File Data Viewer tab, rendering the interactive visualization for a single HDF5 file.
+
+Functions/Classes:
+    - render_viewer_tab: Main function to process the user's intent and generate the selected plot type.
 """
 
 import streamlit as st
@@ -17,6 +19,9 @@ from ui_components import spacer
 _MAX_PLOT_POINTS = 50_000
 
 def render_viewer_tab():
+    """
+    Main function to process the user's intent and generate the selected plot type.
+    """
     apply_viewer_compaction_css()
 
     if 'viewer_state' not in st.session_state:
@@ -108,7 +113,7 @@ def render_viewer_tab():
             domain_bounds=intent.domain_bounds,
             thinning_pct=active_thinning,
             marker_size_pct=intent.marker_sz,
-            vec_scale=intent.vec_scale,      # Passes slider scale
+            vec_scale=intent.vec_scale,      
             time_bounds=intent.time_bounds,
             color_scale=intent.color_scale,
             rh_z_col=intent.rh_z_col,
@@ -127,7 +132,7 @@ def render_viewer_tab():
             color_scale=intent.color_scale,
             show_center=intent.show_cen,
             cen_mode=intent.cen_mode,
-            cen_vector_dir=intent.cen_vector_dir, # <--- NEW
+            cen_vector_dir=intent.cen_vector_dir, 
             custom_colorscale=intent.custom_colorscale
         )
     else:
@@ -143,7 +148,7 @@ def render_viewer_tab():
             vec_scale=intent.vec_scale,
             show_basemap=intent.show_basemap,
             cen_mode=intent.cen_mode,
-            cen_vector_dir=intent.cen_vector_dir, # <--- NEW
+            cen_vector_dir=intent.cen_vector_dir, 
             color_scale=intent.color_scale,
             custom_colorscale=intent.custom_colorscale
         )
@@ -249,4 +254,3 @@ def render_viewer_tab():
         col_left, col_center, col_right = st.columns([1, 8, 1])
         with col_center:
             st.plotly_chart(fig, width="stretch")
-            

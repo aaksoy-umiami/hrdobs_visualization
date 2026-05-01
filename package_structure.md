@@ -1,24 +1,23 @@
-# HRDOBS Dataset Explorer & Visualizer — Package Structure
+# HRDOBS Dataset Explorer & Visualizer v1.0 — Package Structure
 
-hrdobs_companion.py                  ← App entry point (tab routing, page setup)
+hrdobs_companion.py                  ← App entry point (tab routing, page setup, mobile detection)
 │
-├── ui_layout.py                     ← Page config, global CSS, design tokens
+├── ui_layout.py                     ← Page config, global CSS, design tokens, viewer styling overrides
 │
-├── [Tab 1] ui_explorer.py           ← Dataset Explorer tab
-│   ├── ui_explorer_controls.py      ← Sidebar filters (storm, year, basin, intensity)
-│   └── ui_explorer_table.py         ← Styled HTML results table + download
+├── [Tab 1] ui_explorer.py           ← Dataset Explorer tab (coordinating filters, plots, and tables)
+│   ├── ui_explorer_controls.py      ← Sidebar filters (storm, year, geography, SHIPS, intensity, variables)
+│   ├── ui_explorer_table.py         ← Styled HTML results table + storm-level multi-index summary
+│   └── ui_explorer_plots.py         ← Summary visual graphics (Cartesian maps, scatter plots, histograms)
 │
 ├── [Tab 2] ui_viewer.py             ← Single-File Plotter tab
-│   ├── ui_viewer_controls.py        ← Sidebar controls (variable, plot type, options)
-│   │   ├── ui_viewer_file.py        ← File upload, derived fields, global domain
-│   │   └── ui_viewer_domain.py      ← Domain/time limit sliders, auto-fit/reset
-│   └── (calls) plotter.py
+│   ├── ui_viewer_controls.py        ← Sidebar controls (variable, plot type, plotting options)
+│   ├── ui_viewer_file.py            ← File upload, HDF5 memory processing, metadata/SHIPS inspection
+│   └── ui_viewer_domain.py          ← Spatial and temporal domain limits (sliders, auto-fit/reset)
 │
-├── [Tab 3] ui_analysis.py           ← Single-File Statistical Analysis tab
-│   ├── ui_analysis_controls.py      ← Sidebar controls (analysis type, variables)
-│   └── (calls) plotter.py
+├── [Tab 3] ui_analysis.py           ← Single-File Statistical Analysis tab (data distributions, statistics)
+│   └── ui_analysis_controls.py      ← Sidebar controls (analysis type, normalization, coordinate systems)
 │
-└── [Tab 4] ui_info.py               ← Info tab (About, How To Use)
+└── [Tab 4] ui_info.py               ← Info tab (About v1.0, Additional Sources, How To Use)
 
 
 ---------------------------------------------------------------------
@@ -26,46 +25,39 @@ hrdobs_companion.py                  ← App entry point (tab routing, page setu
 
 The application strictly separates **UI state/collection** from **rendering logic** using a unidirectional data flow. 
 
-1. **Sidebar Modules (`_controls.py`):** These scripts handle all `st.sidebar` widgets and session state management. They collect user inputs and return an `Intent` dataclass (e.g., `ViewerIntent`, `AnalysisIntent`, `ExplorerIntent`).
+1. **Sidebar Modules (`_controls.py`, `_domain.py`, `_file.py`):** These scripts handle all `st.sidebar` widgets and session state management. They collect user inputs and return an `Intent` dataclass (e.g., `ViewerIntent`, `AnalysisIntent`, `ExplorerIntent`).
 2. **Main Tab Modules (`ui_*.py`):** These scripts receive the `Intent` dataclass and coordinate the main page layout. 
-3. **Rendering (`plotter.py` / `ui_*_table.py`):** These modules contain pure functions/classes that take the clean data and parameters from the `Intent` to generate visual outputs (Plotly figures or HTML tables) without reading Streamlit session state directly.
+3. **Plotter Mixin Architecture (`plotter*.py`):** The core `StormPlotter` is built using a modular mixin pattern. `plotter_base.py` handles state, metadata, and data filtering, while specific plot types (Cartesian, Storm-Relative, Radial-Height, Histogram, Scatter) are separated into specialized mixin classes.
+4. **Rendering:** Pure functions and classes take clean data and parameters from the `Intent` to generate visual outputs (Plotly figures or HTML tables) without reading Streamlit session state directly.
 
 ---------------------------------------------------------------------
 ## Shared Utilities
 
-plotter.py        ← All Plotly figure generation (StormPlotter class)
-                     • plot()                — Horizontal Cartesian scatter / vector / 3D
-                     • plot_storm_relative() — Storm-relative Cartesian scatter
-                     • plot_radial_height()  — Radial-height profile (range vs. altitude)
-                     • plot_histogram()      — 1D histogram (bar or line)
-                     • plot_histogram_2d()   — 2D joint density heatmap
-                     • plot_scatter()        — Scatter plot with optional trendline
-                     • add_flight_tracks()   — Module-level helper for flight track overlays
+plotter.py                 ← Main assembler aggregating all plotting mixins into the `StormPlotter` class.
 
-data_utils.py     ← HDF5 file loading, CSV inventory loading, metadata decoding
-                     • load_data_from_h5()   — Reads groups, datasets, and attributes
-                     • load_inventory_db()   — Loads the global CSV inventory
+plotter_base.py            ← `StormPlotterBase`: Core class for shared state, data filtering, and variable metadata introspection.
+plotter_cartesian.py       ← `CartesianMixin`: 2D/3D Cartesian geographic maps and flight track overlays.
+plotter_storm_relative.py  ← `StormRelativeMixin`: Storm-relative horizontal mapping and vector rotation conventions.
+plotter_radial_height.py   ← `RadialHeightMixin`: 2D radial-height profile plotting and vector decomposition.
+plotter_histogram.py       ← `HistogramMixin`: 1D/2D histograms, KDE overlays, and marginal distributions.
+plotter_scatter.py         ← `ScatterMixin`: Scatter plots with optional mathematical fit trendlines.
+plotter_basemap.py         ← Black-line basemap helpers for geographic coastlines (loads TopoJSON).
 
-basemap.py        ← Coastline/country border traces for Cartesian map underlay
-                     • get_basemap_traces()  — Returns go.Scatter line traces from TopoJSON
+vector_utils.py            ← Utility functions for calculating and rendering color-binned 2D/3D stick arrows in Plotly.
+data_utils.py              ← HDF5/CSV data loading, metadata decoding, CF-compliant time parsing, and spatial derivations.
 
-config.py         ← App-wide Central Registry
-                     • This is the single source of truth for variables. If adding a new 
-                       dataset variable or changing a color scale, update this file.
-                     • Contains EXPECTED_GROUPS, EXPECTED_META, UNIT_CONVERSIONS, 
-                       and GLOBAL_VAR_CONFIG (color scales, limits, coordinate flags).
+config.py                  ← App-wide Central Registry.
+                              • Source of truth for variable defaults, colorscales, and coordinate flags.
+                              • Contains EXPECTED_GROUPS, EXPECTED_META, SHIPS_PREDICTOR_META, and UNIT_CONVERSIONS.
 
-ui_components.py  ← Reusable Streamlit widget helpers
-                     • section_divider()
-                     • spacer()
-                     • sidebar_label()
-                     • multiselect_with_controls()
+ui_components.py           ← Reusable Streamlit widget helpers and session state synchronization.
+                              • `safe_slider()`, `dynamic_range_slider()`, `multiselect_with_controls()`
 
 
 ---------------------------------------------------------------------
 ## Data Flow & Expected Schema
 
-Uploaded .hdf5 file
+Uploaded .hdf5 file (v1.0 AI-Ready Format)
         │
         ▼
 data_utils.load_data_from_h5()
@@ -73,14 +65,14 @@ data_utils.load_data_from_h5()
         │   Applies unit conversions (e.g., Pa → hPa).
         │
         ▼
-ui_viewer_file._inject_derived_fields()
-        │   Adds computed wind speeds, wind speed errors,
-        │   and vector placeholder columns.
+data_utils.inject_derived_fields()
+        │   Adds derived metrics (e.g., Distance from Center, Azimuths, 
+        │   Computed 3D/Horizontal Winds, Wind Errors).
         │
         ▼
-ui_viewer_file._compute_global_domain()
-        │   Scans all groups for lat/lon to build
-        │   a tight bounding box for domain sliders.
+data_utils.compute_global_domain() & compute_vert_bounds()
+        │   Scans all groups for lat/lon/z coordinates to build
+        │   tight bounding boxes for spatial domain sliders.
         │
         ▼
 data_pack  ←  The core memory object shared across visualization tabs.
@@ -96,18 +88,16 @@ data_pack  ←  The core memory object shared across visualization tabs.
         │           Returns ViewerIntent (all plot parameters)
         │                   │
         │                   ▼
-        │           plotter.StormPlotter.plot() / plot_storm_relative()
-        │                   / plot_radial_height()
+        │           plotter.StormPlotter methods (e.g., plot(), plot_storm_relative())
         │                   │
         │                   ▼
         │           Plotly figure → st.plotly_chart()
         │
         └──▶ ui_analysis_controls.render_analysis_controls()
-                    Returns AnalysisIntent (analysis type, variables, options)
+                    Returns AnalysisIntent (analysis type, coordinate system, normalizations)
                             │
                             ▼
-                    plotter.StormPlotter.plot_histogram()
-                            / plot_histogram_2d() / plot_scatter()
+                    plotter.StormPlotter methods (e.g., plot_histogram_2d(), plot_scatter())
                             │
                             ▼
                     Plotly figure → st.plotly_chart()
@@ -123,17 +113,19 @@ data_utils.load_inventory_db()
         │
         ▼
 ui_explorer_controls.render_explorer_controls()
-        │   Returns ExplorerIntent (filter selections)
+        │   Returns ExplorerIntent (filter selections, including SHIPS data)
         │
         ▼
-ui_explorer.py  ← Applies filters, sorts, renders results
+ui_explorer.py  ← Applies filters, sorts, and coordinates outputs
         │
-        ▼
-ui_explorer_table.display_explorer_table()
-        │   Builds styled HTML multi-index table
+        ├──▶ ui_explorer_plots.render_explorer_summary_plots()
+        │         Builds geographic category maps, scatter plots, and histograms
         │
-        ▼
-st.markdown() + st.download_button()
+        ├──▶ ui_explorer_table.display_summary_table()
+        │         Builds storm-level aggregated summary view
+        │
+        └──▶ ui_explorer_table.display_explorer_table()
+                  Builds detailed, styled HTML multi-index file table
 
 
 ---------------------------------------------------------------------
@@ -156,12 +148,12 @@ If you need to change font sizes, button colors, or spacing, adjust the "Design 
 ---------------------------------------------------------------------
 ## Key Dependencies
 
-| Package         | Used for                                      |
-|-----------------|-----------------------------------------------|
-| `streamlit`     | UI framework                                  |
-| `plotly`        | Interactive figures                           |
-| `pandas`        | DataFrames, CSV I/O                           |
-| `numpy`         | Numerical operations                          |
-| `h5py`          | HDF5 file reading                             |
-| `scipy`         | KDE for mode estimation in stats table        |
-| `streamlit_js_eval` | Optional: viewport width detection        |
+| Package             | Used for                                      |
+|---------------------|-----------------------------------------------|
+| `streamlit`         | UI framework                                  |
+| `plotly`            | Interactive figures (2D/3D, Maps, Charts)     |
+| `pandas`            | DataFrames, CSV I/O                           |
+| `numpy`             | Numerical operations                          |
+| `h5py`              | HDF5 file reading                             |
+| `scipy`             | KDE for mode estimation and density contours  |
+| `streamlit_js_eval` | Optional: mobile device/viewport detection    |

@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-plotter_storm_relative.py
--------------------------
-Storm-relative horizontal mapping methods for StormPlotter.
+Purpose:
+    Provides storm-relative horizontal mapping methods, centering observations on the storm and rotating based on chosen upward conventions.
+
+Functions/Classes:
+    - StormRelativeMixin: Mixin class for generating storm-relative plots.
+    - StormRelativeMixin._rotate_vectors_to_storm_motion: Rotates U and V wind components to align with a specific heading.
+    - StormRelativeMixin._to_storm_relative: Converts geographic coordinates to storm-relative distances and azimuths.
+    - StormRelativeMixin.get_sr_max_range: Calculates the appropriate maximum range for the storm-relative domain.
+    - StormRelativeMixin.plot_storm_relative: Generates a 2D storm-relative horizontal plot.
 """
 
 import math
@@ -38,6 +44,9 @@ class StormRelativeMixin:
         return u_rot, v_rot
 
     def _to_storm_relative(self, obs_lons, obs_lats, obs_times, track_grp, up_convention):
+        """
+        Converts geographic coordinates to storm-relative distances and azimuths.
+        """
         from datetime import datetime, timezone
 
         track_df = self.data[track_grp]
@@ -85,7 +94,6 @@ class StormRelativeMixin:
 
         mean_heading = None
         if up_convention == "Storm Motion":
-            # 1. Try to get explicit heading from new metadata
             sm_heading = self.metadata.get('info', {}).get('storm_motion_heading_deg')
             if sm_heading is not None:
                 try:
@@ -93,7 +101,6 @@ class StormRelativeMixin:
                 except Exception:
                     pass
             
-            # 2. Fallback to track calculation if metadata is missing/unparseable
             if mean_heading is None:
                 dlat_tr     = np.diff(track_lats)
                 dlon_tr     = np.diff(track_lons)
@@ -120,6 +127,9 @@ class StormRelativeMixin:
         return x_km, y_km, range_km, azimuth_deg, mean_heading
 
     def get_sr_max_range(self, group_name, sr_track_grp, df_override=None):
+        """
+        Calculates the appropriate maximum range for the storm-relative domain.
+        """
         if group_name not in self.data or sr_track_grp not in self.data:
             return DEFAULT_SR_MAX_RANGE
         df         = df_override if df_override is not None else self.data[group_name]
@@ -150,6 +160,9 @@ class StormRelativeMixin:
                             vec_scale=1.0, time_bounds=None, color_scale="Linear scale",
                             show_center=True, cen_mode="Location Marker",
                             cen_vector_dir="North", custom_colorscale=None):
+        """
+        Generates a 2D storm-relative horizontal plot.
+        """
                             
         if group_name not in self.data:
             return None, None
@@ -291,7 +304,7 @@ class StormRelativeMixin:
                 showlegend=False, hoverinfo='skip'
             ))
 
-        # --- HOVER DATA EXTRACTION ---
+        # Hover data extraction
         z_col_hover = next((cols_lower[c] for c in ['height', 'ght', 'altitude', 'elev', 'pres', 'pressure', 'p'] if c in cols_lower), None)
         if z_col_hover and z_col_hover in plot_df.columns:
             z_vals_hover = plot_df[z_col_hover].values.astype(float)
@@ -307,7 +320,7 @@ class StormRelativeMixin:
                 z_vals_hover = z_vals_hover / 100.0
                 z_unit_hover = "hPa"
         
-        # --- NEW: Observation Error / Base Value Extraction ---
+        # Observation error and base value extraction
         var_lower = variable.lower()
         is_error_var = var_lower.endswith('err') or var_lower.endswith('_err') or var_lower.endswith('error') or var_lower.endswith('_error')
         
@@ -347,7 +360,6 @@ class StormRelativeMixin:
             if not pd.isna(v):
                 parts.append(f"{cb_title}: {v:,.2f}")
                 
-            # Append Error or Base Value
             if not pd.isna(err_v):
                 parts.append(f"{err_name_hover}: {err_v:,.2f}")
             elif not pd.isna(base_v):
@@ -414,7 +426,6 @@ class StormRelativeMixin:
             ))
 
         if show_center:
-            # --- 1. Simple Tooltip Setup ---
             hover_parts = [
                 "<b>Storm Center</b>"
             ]
@@ -439,7 +450,6 @@ class StormRelativeMixin:
                     if 'ships_params' in self.data and 'sddc_deg' in self.data['ships_params'].columns:
                         vector_dir = float(self.data['ships_params']['sddc_deg'].iloc[0])
 
-            # --- 2. Append Vector Info if Applicable ---
             if vector_dir is not None:
                 hover_parts.append(f"Vector: {cen_vector_dir}")
                 hover_parts.append(f"Absolute Dir: {vector_dir:.1f}°")
@@ -449,9 +459,7 @@ class StormRelativeMixin:
 
             center_hover_text = "<br>".join(hover_parts)
 
-            # --- 3. Draw Traces with Tooltips ---
             if vector_dir is not None:
-                # Rotate the arrow based on our new up_convention
                 if up_convention != "Relative to North" and mean_heading is not None:
                     rotated_dir = vector_dir - mean_heading
                 else:
@@ -492,7 +500,6 @@ class StormRelativeMixin:
                     hoverinfo='text', hovertext=[center_hover_text]
                 ))
 
-        # Dynamic Axis Titles Based on Convention
         if up_convention == "North":
             up_label = "North"
             x_ax_title = "East–West Distance from Center (km)"
@@ -553,4 +560,3 @@ class StormRelativeMixin:
         )
 
         return fig, plot_df
-    

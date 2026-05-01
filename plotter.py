@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-plotter.py
-----------
-Main Assembler for the StormPlotter.
+Purpose:
+    Serves as the main assembler for the StormPlotter, aggregating various plotting mixins into a unified class architecture.
 
-Uses a Mixin architecture to keep files small and focused.
+Functions/Classes:
+    - StormPlotter: Unified class inheriting capabilities from all modular plotting mixins and base state management.
 """
 
 from config import EARTH_R_KM, SURFACE_PRESSURE_HPA
@@ -16,7 +16,6 @@ from plotter_base import (
     _FIG_HEIGHT_Z_STRETCH,
 )
 
-# Import the specialized Plotting Mixins
 from plotter_cartesian import CartesianMixin, add_flight_tracks
 from plotter_storm_relative import StormRelativeMixin
 from plotter_radial_height import RadialHeightMixin
@@ -32,8 +31,7 @@ class StormPlotter(
     StormPlotterBase
 ):
     """
-    Unified StormPlotter.
-    Inherits all plotting capabilities from the modular mixin classes, 
+    Unified StormPlotter inheriting all plotting capabilities from the modular mixin classes 
     and core data/state management from StormPlotterBase.
     """
     pass

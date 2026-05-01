@@ -1,22 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-basemap.py
-----------
-Black-line basemap helper for StormPlotter.
+Purpose:
+    Provides black-line basemap helpers for drawing geographic coastlines and country borders underneath Plotly data traces.
 
-Draws coastlines, country borders as regular go.Scatter line traces so they
-work with any Plotly version (including 6.x where Scattergeo is broken in
-some Streamlit environments).
-
-Public functions:
-
-    get_basemap_traces(domain_bounds)
-        Returns a list of go.Scatter traces for geographic features.
-        Add these BEFORE data traces so they appear underneath.
-
-    get_geo_layout(domain_bounds)
-        Legacy — kept for compatibility but no longer used for rendering.
+Functions/Classes:
+    - _decode_arc: Decodes a delta-encoded topojson arc to longitude and latitude lists.
+    - _find_topo_path: Locates the Natural Earth topojson file, prioritizing the project-bundled copy.
+    - get_basemap_traces: Returns a list of Scatter line traces for geographic coastlines and borders.
+    - get_geo_layout: Legacy function returning a geographic layout dictionary for older Plotly versions.
 """
+
 import math
 import os
 import json
@@ -24,7 +17,9 @@ from ui_layout import TARGET_PLOT_TICKS
 
 
 def _decode_arc(arc, scale, translate):
-    """Decode a delta-encoded topojson arc to lon/lat lists."""
+    """
+    Decodes a delta-encoded topojson arc to longitude and latitude lists.
+    """
     lons, lats = [], []
     x, y = 0, 0
     for pt in arc:
@@ -36,16 +31,16 @@ def _decode_arc(arc, scale, translate):
 
 
 def _find_topo_path():
-    """Locate Natural Earth topojson file — project-bundled copy takes priority."""
+    """
+    Locates the Natural Earth topojson file, prioritizing the project-bundled copy.
+    """
     import os
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # Prefer higher-resolution 50m if available, fall back to 110m
     for fname in ('world_50m.json', 'world_110m.json'):
         project_copy = os.path.join(script_dir, fname)
         if os.path.exists(project_copy):
             return project_copy
 
-    # Fallback: Plotly bundled copy (available in Plotly < 6)
     try:
         import plotly
         base = os.path.dirname(plotly.__file__)
@@ -64,12 +59,7 @@ def _find_topo_path():
 
 def get_basemap_traces(domain_bounds: dict) -> list:
     """
-    Return a list of go.Scatter line traces for coastlines and borders.
-    Compatible with Plotly 6.x — uses standard Cartesian axes (x=lon, y=lat).
-
-    Parameters
-    ----------
-    domain_bounds : dict  — lat_min, lat_max, lon_min, lon_max
+    Returns a list of Scatter line traces for geographic coastlines and borders.
     """
     try:
         import plotly.graph_objects as go
@@ -91,7 +81,6 @@ def get_basemap_traces(domain_bounds: dict) -> list:
     scale = transform.get('scale', [1.0, 1.0])
     translate = transform.get('translate', [0.0, 0.0])
 
-    # Expand domain slightly so border lines that cross the edge are included
     pad = 1.0
     lo_min = domain_bounds['lon_min'] - pad
     lo_max = domain_bounds['lon_max'] + pad
@@ -104,7 +93,6 @@ def get_basemap_traces(domain_bounds: dict) -> list:
     for arc in arcs:
         lons, lats = _decode_arc(arc, scale, translate)
 
-        # Check if any point of this arc falls in the domain
         in_domain = any(
             lo_min <= lo <= lo_max and la_min <= la <= la_max
             for lo, la in zip(lons, lats)
@@ -112,7 +100,6 @@ def get_basemap_traces(domain_bounds: dict) -> list:
         if not in_domain:
             continue
 
-        # Add arc points, using None as a break between arcs
         all_lons.extend(lons + [None])
         all_lats.extend(lats + [None])
 
@@ -132,8 +119,7 @@ def get_basemap_traces(domain_bounds: dict) -> list:
 
 def get_geo_layout(domain_bounds: dict) -> dict:
     """
-    Legacy function — kept for compatibility but no longer used for rendering
-    in Plotly 6+.  get_basemap_traces() is used instead.
+    Legacy function returning a geographic layout dictionary for older Plotly versions.
     """
     lat_pad = max((domain_bounds['lat_max'] - domain_bounds['lat_min']) * 0.02, 0.1)
     lon_pad = max((domain_bounds['lon_max'] - domain_bounds['lon_min']) * 0.02, 0.1)

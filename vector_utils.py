@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-vector_utils.py
----------------
-Utility functions for calculating and rendering vectorized, color-binned 
-stick arrows for 2D and 3D Plotly plots without breaking the rendering engine.
+Purpose:
+    Provides utility functions for calculating and rendering vectorized, color-binned stick arrows for 2D and 3D Plotly plots.
+
+Functions/Classes:
+    - build_2d_vector_traces: Generates 2D Scatter traces for color-binned stick arrows.
+    - build_3d_vector_traces: Generates 3D Scatter3d traces for color-binned stick arrows.
 """
 
 import numpy as np
@@ -28,8 +30,7 @@ def build_2d_vector_traces(
     vec_scale=1.0, y_scale_factor=1.0, arrow_fraction=0.05
 ):
     """
-    Builds a list of 2D go.Scatter line traces representing color-binned stick arrows.
-    Applies dimensionally-corrected math so the arrows don't deform on distorted axes.
+    Generates 2D Scatter traces for color-binned stick arrows.
     """
     max_span_x = np.nanmax(x0) - np.nanmin(x0)
     if pd.isna(max_span_x) or max_span_x == 0: max_span_x = 1.0
@@ -124,8 +125,7 @@ def build_3d_vector_traces(
     vec_scale=1.0, z_scale_factor=1.0, arrow_fraction=0.05
 ):
     """
-    Builds a list of 3D go.Scatter3d line traces representing color-binned stick arrows.
-    Applies dimensionally-corrected math so the arrows don't deform on distorted Z axes.
+    Generates 3D Scatter3d traces for color-binned stick arrows.
     """
     max_span_x = np.nanmax(x0) - np.nanmin(x0)
     if pd.isna(max_span_x) or max_span_x == 0: max_span_x = 1.0

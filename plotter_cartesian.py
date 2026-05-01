@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-plotter_cartesian.py
---------------------
-Cartesian (Geographic) mapping methods for StormPlotter.
+Purpose:
+    Handles Cartesian and geographic mapping methods, generating 2D and 3D spatial plots with optional flight tracks.
+
+Functions/Classes:
+    - CartesianMixin: Mixin class providing geographic plotting capabilities.
+    - CartesianMixin.plot: Generates a 2D or 3D Cartesian geographic plot.
+    - add_flight_tracks: Overlays aircraft flight paths onto an existing geographic plot.
 """
 
 import math
@@ -24,9 +28,8 @@ from plotter_base import (
     _FIG_HEIGHT_Z_STRETCH,
 )
 from data_utils import decode_metadata
-
-# Import our new vector rendering utilities!
 from vector_utils import build_2d_vector_traces, build_3d_vector_traces
+
 
 class CartesianMixin:
     
@@ -34,6 +37,9 @@ class CartesianMixin:
              is_3d=False, z_col=None, thinning_pct=None, marker_size_pct=100,
              time_bounds=None, z_ratio=0.3, vec_scale=1.0, show_basemap=False,
              cen_mode="Location Marker", cen_vector_dir="North", color_scale="Linear scale", custom_colorscale=None):
+        """
+        Generates a 2D or 3D Cartesian geographic plot for a specific variable.
+        """
              
         if group_name not in self.data:
             return None, None
@@ -71,7 +77,7 @@ class CartesianMixin:
         color_array, cmap, cmin, cmax, cmid, cb_tickvals, cb_ticktext, cb_title, display_name, base_color_array = \
             self._prepare_colorscale(group_name, variable, plot_df, color_scale, custom_colorscale, is_track)
 
-        # --- HOVER DATA EXTRACTION ---
+        # Hover data extraction
         t_col = cols_lower.get('time')
         t_vals = plot_df[t_col].values if t_col else np.full(len(plot_df), np.nan)
 
@@ -87,7 +93,7 @@ class CartesianMixin:
                 z_vals_hover = z_vals_hover / 100.0
                 z_unit_hover = "hPa"
 
-        # --- NEW: Observation Error / Base Value Extraction ---
+        # Observation error and base value extraction
         var_lower = variable.lower()
         is_error_var = var_lower.endswith('err') or var_lower.endswith('_err') or var_lower.endswith('error') or var_lower.endswith('_error')
         
@@ -128,7 +134,6 @@ class CartesianMixin:
                 if is_vector: parts.append(f"Magnitude: {v:,.1f}")
                 else:         parts.append(f"{display_name}: {v:,.2f}")
             
-            # Append Error or Base Value
             if not pd.isna(err_v):
                 parts.append(f"{err_name_hover}: {err_v:,.2f}")
             elif not pd.isna(base_v):
@@ -208,7 +213,6 @@ class CartesianMixin:
             clat, clon = self.metadata['storm_center']
             use_3d     = is_3d and (z_vals is not None)
 
-            # --- 1. Simple Tooltip Setup ---
             hover_parts = [
                 "<b>Storm Center</b>",
                 f"Lat: {clat:.2f}, Lon: {clon:.2f}"
@@ -234,14 +238,12 @@ class CartesianMixin:
                     if 'ships_params' in self.data and 'sddc_deg' in self.data['ships_params'].columns:
                         motion_dir = float(self.data['ships_params']['sddc_deg'].iloc[0])
 
-            # --- 2. Append Vector Info if Applicable ---
             if motion_dir is not None:
                 hover_parts.append(f"Vector: {cen_vector_dir}")
                 hover_parts.append(f"Direction: {motion_dir:.1f}°")
 
             center_hover_text = "<br>".join(hover_parts)
 
-            # --- 3. Draw Traces with Tooltips ---
             if motion_dir is not None:
                 theta = math.radians(90 - motion_dir)
 
@@ -326,15 +328,12 @@ class CartesianMixin:
                     z_range = [domain_bounds['z_max'], domain_bounds['z_min']]
 
         if is_3d and z_vals is not None:
-            
-            # Determine clean Z-axis title based on the column name and metadata units
             z_ax_title = z_col
             if z_col:
                 is_pres = any(p in z_col.lower() for p in ['pres', 'pressure', 'p'])
                 z_meta = self.var_attrs.get(group_name, {}).get(z_col, {})
                 z_units = decode_metadata(z_meta.get('units', 'hPa' if is_pres else 'm'))
                 
-                # Catch raw Pascals and display as hPa since we scale it down elsewhere
                 if is_pres and 'Pa' in z_units and 'hPa' not in z_units:
                     z_units = 'hPa'
                     
@@ -384,7 +383,7 @@ class CartesianMixin:
             _FIG_H = _PA_H + _MT + _MB
 
             if show_basemap and domain_bounds:
-                from basemap import get_basemap_traces
+                from plotter_basemap import get_basemap_traces
                 for bm_trace in get_basemap_traces(domain_bounds):
                     fig.add_trace(bm_trace)
                     fig.data = (fig.data[-1],) + fig.data[:-1]
@@ -422,7 +421,9 @@ class CartesianMixin:
 def add_flight_tracks(fig, data_pack, track_mapping, plot_track, selected_platform,
                       is_3d, is_target_pres, proj_option="Bottom Only",
                       domain_bounds=None):
-    # Leave this exactly as it was!
+    """
+    Overlays aircraft flight paths onto an existing geographic plot.
+    """
     for plat, track_group in track_mapping.items():
         track_df  = data_pack['data'][track_group]
         t_lat_c   = next((c for c in track_df.columns if c.lower() in ['lat', 'latitude']),  None)

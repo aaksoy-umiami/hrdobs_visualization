@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-ui_explorer_controls.py
------------------------
-All sidebar filter logic for the Global Dataset Explorer tab.
+Purpose:
+    Handles all sidebar filter logic and UI state management for the Global Dataset Explorer tab.
+
+Functions/Classes:
+    - ExplorerIntent: Data class representing the user's selected filtering constraints.
+    - get_dropdown_mask: Generates a boolean mask for filtering the dataframe based on selections.
+    - render_explorer_controls: Renders the sidebar controls and returns the ExplorerIntent state.
 """
 
 import streamlit as st
@@ -46,6 +50,9 @@ GEO_REGIONS = {
 
 @dataclass
 class ExplorerIntent:
+    """
+    Data class representing the user's selected filtering constraints.
+    """
     unit:       str             = "m/s"
     years:      List            = field(default_factory=list)
     storms:     List            = field(default_factory=list)
@@ -64,6 +71,9 @@ class ExplorerIntent:
     is_ships_active: bool       = False
 
 def get_dropdown_mask(df, skip_filters, has_vars):
+    """
+    Generates a boolean mask for filtering the dataframe based on selections.
+    """
     if isinstance(skip_filters, str): skip_filters = [skip_filters]
     elif skip_filters is None: skip_filters = []
 
@@ -84,7 +94,7 @@ def get_dropdown_mask(df, skip_filters, has_vars):
     if 'MSLP' not in skip_filters and 'ui_slp' in st.session_state:
         m &= ((df['MSLP_hPa'] >= st.session_state.ui_slp[0]) & (df['MSLP_hPa'] <= st.session_state.ui_slp[1]))
 
-    # --- Geographic Filtering (Cycle-Based) ---
+    # Geographic Filtering (Cycle-Based)
     if 'Geography' not in skip_filters:
         lat_b = st.session_state.get('ui_lat')
         lon_b = st.session_state.get('ui_lon')
@@ -108,18 +118,19 @@ def get_dropdown_mask(df, skip_filters, has_vars):
     return m
 
 def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, raw_max_p) -> ExplorerIntent:
+    """
+    Renders the sidebar controls and returns the ExplorerIntent state.
+    """
     init_min_i = float(np.floor(raw_min_i))
     init_max_i = float(np.ceil(raw_max_i))
     init_min_p = float(np.floor(raw_min_p))
     init_max_p = float(np.ceil(raw_max_p))
 
-    # Calculate global DB bounds for Lat/Lon
     db_lat_min = float(np.floor(db_df['Lat'].min())) if not db_df['Lat'].isna().all() else -90.0
     db_lat_max = float(np.ceil(db_df['Lat'].max())) if not db_df['Lat'].isna().all() else 90.0
     db_lon_min = float(np.floor(db_df['Lon'].min())) if not db_df['Lon'].isna().all() else -180.0
     db_lon_max = float(np.ceil(db_df['Lon'].max())) if not db_df['Lon'].isna().all() else 180.0
 
-    # Calculate global bounds for SHIPS variables
     ships_global_bounds = {}
     for col, config in SHIPS_CONFIG.items():
         if col in db_df.columns:
@@ -142,7 +153,6 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         'ui_sort_col': 'Year', 'ui_sort_order': 'Ascending',
     }
     
-    # Initialize state for SHIPS sliders
     for col, bounds in ships_global_bounds.items():
         default_state[f"ui_ships_{col}"] = bounds
         default_state[f"_last_t_min_ui_ships_{col}"] = bounds[0]
@@ -169,7 +179,6 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         st.session_state.ui_sort_col   = 'Year'
         st.session_state.ui_sort_order = 'Ascending'
         
-        # Reset internal tracker states for dynamic range wrappers
         st.session_state._last_t_min_ui_int = float(np.floor(raw_min_i * cur_mult))
         st.session_state._last_t_max_ui_int = float(np.ceil(raw_max_i * cur_mult))
         st.session_state._last_t_min_ui_slp = init_min_p
@@ -186,9 +195,10 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
     with st.sidebar.container(border=True):
         st.markdown("#### Filter by Storm Information")
 
-        # --- ANTI-RESET HELPER ---
         def get_safe_options(filtered_series, session_key):
-            """Prevents Streamlit from secretly deleting selections when cross-filters narrow the options."""
+            """
+            Prevents Streamlit from deleting selections when cross-filters narrow the options.
+            """
             avail = list(filtered_series.dropna().unique())
             current_sel = st.session_state.get(session_key, [])
             for item in current_sel:
@@ -197,7 +207,7 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
             try:
                 return sorted(avail)
             except TypeError:
-                return avail # Fallback just in case of mixed data types
+                return avail
 
         filter_mappings = [
             ("Year",        "ui_years",  "Year",        "Year"),
@@ -211,7 +221,6 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
             multiselect_with_controls(label, avail, key)
             section_divider()
 
-        # --- GEOGRAPHIC LOCATION SECTION ---
         st.markdown("#### Geographic Location")
         
         avail_basins_in_db = db_df['Basin'].dropna().unique()
@@ -248,7 +257,6 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         
         section_divider()
 
-        # --- INTENSITY & MSLP GROUPING ---
         filtered_cats = db_df[get_dropdown_mask(db_df, "TC_Category", has_vars)]["TC_Category"]
         avail_cats = get_safe_options(filtered_cats, "ui_cats")
         multiselect_with_controls("Filter by Category", avail_cats, "ui_cats")
@@ -275,7 +283,6 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
             st.session_state.ui_int  = (new_low, new_high)
             st.session_state.prev_unit = unit
             
-            # Align internal tracking keys for the wrapper conversion
             last_min_old = st.session_state.get('_last_t_min_ui_int', old_g_min)
             last_max_old = st.session_state.get('_last_t_max_ui_int', old_g_max)
             st.session_state._last_t_min_ui_int = last_min_old * MS_TO_KTS if unit == "knots" else last_min_old / MS_TO_KTS
@@ -318,7 +325,6 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         df_vars    = db_df[get_dropdown_mask(db_df, 'Vars', has_vars)]
         avail_vars = (sorted(set(v.strip() for v_str in df_vars['Observation_Variables'] if isinstance(v_str, str) for v in v_str.split(',') if v.strip() and v.strip().lower() != 'nan')) if has_vars else [])
 
-        # --- RESTRICT TO OBSERVED VARIABLES ONLY ---
         excluded_vars = set([k.lower() for k, v in GLOBAL_VAR_CONFIG.items() if v.get('is_coord', False)])
         excluded_vars.update([k.lower() for k in SHIPS_PREDICTOR_META.keys()])
         excluded_vars.update(['lat', 'latitude', 'clat', 'lon', 'longitude', 'clon', 'time', 'rmw', 'vmax', 'pmin'])
@@ -386,7 +392,6 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
 
         multiselect_with_controls('Contains Observed Variable:', avail_vars, 'ui_vars', format_func=format_var_name)
 
-    # --- SHIPS Environment Filters ---
     with st.sidebar.container(border=True):
         st.markdown("#### Filter by SHIPS Parameter")
         st.checkbox("Show all files regardless of whether they contain SHIPS data", key="ui_ships_inc_nan")

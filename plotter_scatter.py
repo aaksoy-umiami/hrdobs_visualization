@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-plotter_scatter.py
-------------------
-Scatter plotting methods and trendline calculations for StormPlotter.
+Purpose:
+    Provides scatter plotting methods and trendline calculations for visualizing relationships between variables.
+
+Functions/Classes:
+    - ScatterMixin: Mixin class for generating scatter plots and trendline calculations.
+    - ScatterMixin.plot_scatter: Generates a 2D or polar scatter plot with optional mathematical fit trendlines.
 """
 
 import numpy as np
@@ -23,6 +26,9 @@ class ScatterMixin:
                      custom_colorscale=None, coordinate_system="Cartesian", active_trendlines=None,
                      selected_indices=None, selection_mode="Include", show_marginals=False, show_kde=False,
                      map_option="None"):
+        """
+        Generates a 2D or polar scatter plot with optional mathematical fit trendlines.
+        """
                      
         if group_name not in self.data:
             return None
@@ -80,22 +86,19 @@ class ScatterMixin:
             yaxis_dict['scaleanchor'] = 'x'
             yaxis_dict['scaleratio'] = 1
 
-        # Apply time axis conversions
         x_vals = self._apply_time_axis(x_var_col, x_vals, xaxis_dict)
         y_vals = self._apply_time_axis(y_var_col, y_vals, yaxis_dict, is_x=False)
 
         fig = go.Figure()
         stats_list = []
-        
-        # In Scatter mode, everything is always centered at 0.5
         title_x = 0.5
         
         fit_colors = {
-            "Linear": "#000000",               # Black
-            "Quadratic (2nd Deg)": "#e31a1c",  # Red
-            "Cubic (3rd Deg)": "#1f78b4",      # Blue
-            "Logarithmic": "#33a02c",          # Green
-            "Exponential": "#ff7f00"           # Orange
+            "Linear": "#000000",
+            "Quadratic (2nd Deg)": "#e31a1c",
+            "Cubic (3rd Deg)": "#1f78b4",
+            "Logarithmic": "#33a02c",
+            "Exponential": "#ff7f00"
         }
 
         sz = max(1, int(5 * marker_size_pct / 100))
@@ -107,7 +110,6 @@ class ScatterMixin:
             cmap       = custom_colorscale if custom_colorscale else var_conf.get('colorscale', 'Viridis')
             cmid       = var_conf.get('cmid', None)
             
-            # Colorbar matches the main plot height
             cb_dict = dict(len=0.8, thickness=15, tickfont=dict(size=FS_PLOT_TICK))
                 
             marker_dict = dict(
@@ -121,7 +123,6 @@ class ScatterMixin:
         else:
             marker_dict = dict(size=sz, color='#B6BABD')
 
-        # --- HOVER DATA EXTRACTION ---
         cols_lower = {c.lower(): c for c in df.columns}
         t_col = cols_lower.get('time')
         t_vals = plot_df[t_col].values if t_col else np.full(len(plot_df), np.nan)
@@ -196,7 +197,6 @@ class ScatterMixin:
                 )
             )
         else:
-            # Use full domain for Scatter
             xaxis_dict['domain'] = [0.0, 1.0]
             yaxis_dict['domain'] = [0.0, 1.0]
 
@@ -223,7 +223,7 @@ class ScatterMixin:
                         lon_min, lon_max = (x_min, x_max) if is_x_lon else (y_min, y_max)
                         domain_bounds = {'lat_min': lat_min, 'lat_max': lat_max, 'lon_min': lon_min, 'lon_max': lon_max}
                         
-                        from basemap import get_basemap_traces
+                        from plotter_basemap import get_basemap_traces
                         traces = get_basemap_traces(domain_bounds)
                         for t in traces:
                             if not is_x_lon:
@@ -231,7 +231,6 @@ class ScatterMixin:
                             fig.add_trace(t)
                             fig.data = (fig.data[-1],) + fig.data[:-1]
 
-                        # Enforce data limits so Plotly doesn't zoom out to the basemap
                         x_pad = max((x_max - x_min) * 0.05, 0.05)
                         y_pad = max((y_max - y_min) * 0.05, 0.05)
                         fig.update_layout(
@@ -246,7 +245,6 @@ class ScatterMixin:
             else:
                 valid = np.isfinite(x_vals) & np.isfinite(y_vals)
 
-            # Mathematical Fits Calculation
             if valid.sum() >= 4:
                 x_fit = x_vals[valid]
                 y_fit = y_vals[valid]
@@ -336,7 +334,6 @@ class ScatterMixin:
                 )
             )
 
-        # Standard margins for scatter mode
         plot_margin_r = 40
         plot_margin_t = self._title_top_margin(nice_title) - 20
 
@@ -349,4 +346,3 @@ class ScatterMixin:
             margin=dict(l=60, r=plot_margin_r, t=plot_margin_t, b=80),
         )
         return fig, stats_list
-    

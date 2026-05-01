@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-ui_viewer_domain.py
--------------------
-Domain and time limit sidebar sections for the File Data Viewer tab.
+Purpose:
+    Provides the sidebar UI components for setting spatial and temporal domain limits within the File Data Viewer tab.
+
+Functions/Classes:
+    - _render_domain_section: Renders sliders and inputs for bounding the horizontal and vertical spatial domain.
+    - _render_time_section: Renders a slider for bounding the temporal domain of the loaded data.
 """
 
 import math
@@ -24,6 +27,9 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
                            default_lon_min, default_lon_max,
                            plot_type="Horizontal Cartesian",
                            sr_track_grp=None, plotter=None):
+    """
+    Renders sliders and inputs for bounding the horizontal and vertical spatial domain.
+    """
 
     is_sr = (plot_type == "Horizontal Storm-Relative")
     is_rh = (plot_type == "Radial-Height Profile")
@@ -83,7 +89,6 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
             c1, c2 = st.columns([1.0, 1.7])
             with c1: sidebar_label('Max Range (km):', size='label')
             with c2:
-                # Replaced raw slider with safe_slider to automatically prevent the 25.0 bounds collision
                 sr_max_range = safe_slider("Max Range (km)", min_value=25.0, max_value=float(sr_slider_max), step=25.0, key='v_sr_max_range', label_visibility="collapsed")
 
             domain_bounds = {
@@ -307,6 +312,9 @@ def _render_domain_section(data_pack, sel_group, df_sel, options,
 def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
                          plot_type="Horizontal Cartesian",
                          sr_track_grp=None, plotter=None):
+    """
+    Renders a slider for bounding the temporal domain of the loaded data.
+    """
     from datetime import timedelta
 
     with st.sidebar.container(border=True):
@@ -371,7 +379,6 @@ def _render_time_section(data_pack, sel_group, df_sel, domain_bounds,
         _pending_time = consume_flag('_pending_time_range')
         if _pending_time: st.session_state.v_time_range = _pending_time
             
-        # Standard Streamlit slider explicitly maintained to support the safe timedelta logic 
         if pd.isnull(_t_slider_min) or pd.isnull(_t_slider_max):
             st.warning("⚠️ Invalid time bounds in current domain.")
             return None
