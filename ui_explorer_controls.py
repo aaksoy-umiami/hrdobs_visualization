@@ -210,9 +210,9 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
                 return avail
 
         filter_mappings = [
-            ("Year",        "ui_years",  "Year",        "Year"),
-            ("Name",        "ui_storms", "Storm",       "Storm"),
-            ("Storm Basin", "ui_basins", "Basin",       "Basin"),
+            ("Year",        "ui_years",  "Year",        ["Year", "Intensity", "MSLP", "SHIPS"]),
+            ("Name",        "ui_storms", "Storm",       ["Storm", "Intensity", "MSLP", "SHIPS"]),
+            ("Storm Basin", "ui_basins", "Basin",       ["Basin", "Intensity", "MSLP", "SHIPS"]),
         ]
         
         for label, key, col, skip_arg in filter_mappings:
@@ -257,7 +257,7 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         
         section_divider()
 
-        filtered_cats = db_df[get_dropdown_mask(db_df, "TC_Category", has_vars)]["TC_Category"]
+        filtered_cats = db_df[get_dropdown_mask(db_df, ["TC_Category", "Intensity", "MSLP", "SHIPS"], has_vars)]["TC_Category"]
         avail_cats = get_safe_options(filtered_cats, "ui_cats")
         multiselect_with_controls("Filter by Category", avail_cats, "ui_cats")
         
@@ -310,7 +310,7 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
     with st.sidebar.container(border=True):
         st.markdown("#### Filter by Available Data")
         
-        df_groups    = db_df[get_dropdown_mask(db_df, 'Groups', has_vars)]
+        df_groups    = db_df[get_dropdown_mask(db_df, ["Groups", "Intensity", "MSLP", "SHIPS"], has_vars)]
         avail_groups = [g for g in EXPECTED_GROUPS if g in df_groups.columns and pd.to_numeric(df_groups[g], errors='coerce').fillna(0).sum() > 0]
         
         for sel_g in st.session_state.get('ui_groups', []):
@@ -322,7 +322,7 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
 
         section_divider()
 
-        df_vars    = db_df[get_dropdown_mask(db_df, 'Vars', has_vars)]
+        df_vars    = db_df[get_dropdown_mask(db_df, ["Vars", "Intensity", "MSLP", "SHIPS"], has_vars)]
         avail_vars = (sorted(set(v.strip() for v_str in df_vars['Observation_Variables'] if isinstance(v_str, str) for v in v_str.split(',') if v.strip() and v.strip().lower() != 'nan')) if has_vars else [])
 
         excluded_vars = set([k.lower() for k, v in GLOBAL_VAR_CONFIG.items() if v.get('is_coord', False)])
