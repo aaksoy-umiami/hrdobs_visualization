@@ -288,7 +288,7 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
             st.session_state._last_t_min_ui_int = last_min_old * MS_TO_KTS if unit == "knots" else last_min_old / MS_TO_KTS
             st.session_state._last_t_max_ui_int = last_max_old * MS_TO_KTS if unit == "knots" else last_max_old / MS_TO_KTS
 
-        slider_mask = get_dropdown_mask(db_df, ['Intensity', 'MSLP'], has_vars)
+        slider_mask = get_dropdown_mask(db_df, ['Intensity', 'MSLP', 'SHIPS'], has_vars)
         slider_df   = db_df[slider_mask]
 
         t_min_i  = float(np.floor(slider_df['Intensity_ms'].min() * mult)) if not slider_df.empty else g_min_i_unit
@@ -396,7 +396,7 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
         st.markdown("#### Filter by SHIPS Parameter")
         st.checkbox("Show all files regardless of whether they contain SHIPS data", key="ui_ships_inc_nan")
         
-        slider_mask_ships = get_dropdown_mask(db_df, ['SHIPS'], has_vars)
+        slider_mask_ships = get_dropdown_mask(db_df, ['Intensity', 'MSLP', 'SHIPS'], has_vars)
         slider_df_ships = db_df[slider_mask_ships]
         
         for col, config in SHIPS_CONFIG.items():
