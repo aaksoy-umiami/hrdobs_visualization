@@ -132,9 +132,17 @@ def dynamic_range_slider(label: str, global_min: float, global_max: float, data_
     """
     Renders a range slider that maintains global bounds while adjusting selections based on data.
     """
-    if data_min >= data_max:
-        data_max = data_min + kwargs.get('step', 1.0)
+    # 1. Sanitize all incoming bounds to prevent Streamlit crashes
+    if global_min >= global_max:
+        global_max = global_min + kwargs.get('step', 1.0)
         
+    data_min = max(global_min, min(data_min, global_max))
+    data_max = max(global_min, min(data_max, global_max))
+    if data_min >= data_max:
+        data_max = min(global_max, data_min + kwargs.get('step', 1.0))
+        if data_min >= data_max:
+            data_min = max(global_min, data_max - kwargs.get('step', 1.0))
+
     last_min_key = f"_last_t_min_{key}"
     last_max_key = f"_last_t_max_{key}"
     
@@ -142,21 +150,26 @@ def dynamic_range_slider(label: str, global_min: float, global_max: float, data_
     last_t_max = st.session_state.get(last_max_key, global_max)
     curr_val = st.session_state.get(key, (global_min, global_max))
 
-    # If the user hasn't manually constrained the slider (it currently spans the full previous data range),
-    # automatically snap the new selection to cover the full *new* data range.
-    if curr_val[0] <= last_t_min + 0.1 and curr_val[1] >= last_t_max - 0.1:
-        new_val = (data_min, data_max)
+    # 2. Check if the slider was previously sitting at the "full data" extent
+    is_full_extent = (curr_val[0] <= last_t_min + 0.1) and (curr_val[1] >= last_t_max - 0.1)
+
+    if is_full_extent:
+        # Auto-snap to the new data bounds
+        v0, v1 = data_min, data_max
     else:
-        # If manually constrained by the user, preserve their selection but clamp it to the global limits
+        # Preserve user's manual bounds, strictly clamped to global limits
         v0 = max(global_min, min(curr_val[0], global_max))
         v1 = max(global_min, min(curr_val[1], global_max))
-        new_val = (v0, v1) if v0 <= v1 else (global_min, global_max)
+    
+    # 3. Ensure mathematically valid tuple
+    if v0 > v1:
+        v0, v1 = v1, v0
 
-    st.session_state[key] = new_val
+    st.session_state[key] = (v0, v1)
     st.session_state[last_min_key] = data_min
     st.session_state[last_max_key] = data_max
 
-    # The actual widget track must represent the absolute global dataset bounds
+    # 4. Render with static global track
     return st.slider(label, min_value=global_min, max_value=global_max, key=key, **kwargs)
 
 # ---------------------------------------------------------------------------
