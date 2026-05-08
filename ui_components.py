@@ -86,11 +86,6 @@ def multiselect_with_controls(label: str, options: list, key: str, **kwargs):
     """
     Renders a multiselect with Select/Deselect All buttons.
     """
-    if key in st.session_state:
-        st.session_state[key] = [
-            x for x in st.session_state[key] if x in options
-        ]
-
     st.multiselect(label, options, key=key, **kwargs)
 
     st.markdown('<div class="light-btn-marker" style="display:none;"></div>', unsafe_allow_html=True)
