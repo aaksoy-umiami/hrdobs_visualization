@@ -130,7 +130,7 @@ def safe_slider(label: str, min_value: float, max_value: float, key: str, **kwar
 
 def dynamic_range_slider(label: str, global_min: float, global_max: float, data_min: float, data_max: float, key: str, **kwargs):
     """
-    Renders a range slider that respects dynamic data bounds.
+    Renders a range slider that maintains global bounds while adjusting selections based on data.
     """
     if data_min >= data_max:
         data_max = data_min + kwargs.get('step', 1.0)
@@ -142,18 +142,22 @@ def dynamic_range_slider(label: str, global_min: float, global_max: float, data_
     last_t_max = st.session_state.get(last_max_key, global_max)
     curr_val = st.session_state.get(key, (global_min, global_max))
 
+    # If the user hasn't manually constrained the slider (it currently spans the full previous data range),
+    # automatically snap the new selection to cover the full *new* data range.
     if curr_val[0] <= last_t_min + 0.1 and curr_val[1] >= last_t_max - 0.1:
         new_val = (data_min, data_max)
     else:
-        v0 = max(data_min, min(curr_val[0], data_max))
-        v1 = max(data_min, min(curr_val[1], data_max))
-        new_val = (v0, v1) if v0 <= v1 else (data_min, data_max)
+        # If manually constrained by the user, preserve their selection but clamp it to the global limits
+        v0 = max(global_min, min(curr_val[0], global_max))
+        v1 = max(global_min, min(curr_val[1], global_max))
+        new_val = (v0, v1) if v0 <= v1 else (global_min, global_max)
 
     st.session_state[key] = new_val
     st.session_state[last_min_key] = data_min
     st.session_state[last_max_key] = data_max
 
-    return st.slider(label, min_value=data_min, max_value=data_max, key=key, **kwargs)
+    # The actual widget track must represent the absolute global dataset bounds
+    return st.slider(label, min_value=global_min, max_value=global_max, key=key, **kwargs)
 
 # ---------------------------------------------------------------------------
 # State Management Utilities
