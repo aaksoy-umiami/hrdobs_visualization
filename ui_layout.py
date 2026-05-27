@@ -87,6 +87,8 @@ def setup_page():
             Visualize, filter, and analyze the HRDOBS v1.0 database — including flight-level,
             dropsonde, SFMR, and radar observations from NOAA and Air Force reconnaissance aircraft.
 
+            *Optimized for Streamlit 1.57.0*
+
             **Author:** Altug Aksoy
             **Affiliation:** CIMAS/Rosenstiel School, University of Miami
 
@@ -299,13 +301,13 @@ def render_header():
 
 def render_footer():
     """
-    Renders the copyright line at the bottom of every page.
+    Renders the copyright line in a sticky container at the bottom of the viewport.
     """
-    st.markdown("---")
-    st.markdown(
-        f"<div style='text-align: center; color: {CLR_SUBTLE}; "
-        f"font-size: {FS_FOOTER}px;'>"
-        f"© {datetime.now().year} Altug Aksoy  |  "
-        f"University of Miami / Rosenstiel School / Cooperative Institute for Marine and Atmospheric Studies</div>",
-        unsafe_allow_html=True
-    )
+    with st.bottom:
+        st.markdown(
+            f"<div style='text-align: center; color: {CLR_SUBTLE}; "
+            f"font-size: {FS_FOOTER}px;'>"
+            f"© {datetime.now().year} Altug Aksoy  |  "
+            f"University of Miami / Rosenstiel School / Cooperative Institute for Marine and Atmospheric Studies</div>",
+            unsafe_allow_html=True
+        )

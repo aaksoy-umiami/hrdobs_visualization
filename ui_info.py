@@ -132,21 +132,21 @@ def _render_about():
     with col_cit1:
         st.markdown("#### 📄 Citation")
         st.markdown("""
-        *Citation information will be added once the companion paper is published.*
+        *A companion manuscript titled "HRDOBS: A Comprehensive, AI-Ready Dataset for Standardized Observations Collected in and Around North Atlantic Tropical Cyclones" has been submitted to the **Bulletin of the American Meteorological Society (BAMS)** and is currently under review.*
 
         In the meantime, if you use this dataset or tool in your research, please contact the
         author for the appropriate reference.
         """)
 
     with col_cit2:
-        st.markdown("#### 📝 BibTeX *(placeholder)*")
+        st.markdown("#### 📝 BibTeX *(Pending)*")
         st.code("""\
-@article{Aksoy_HRDOBS_TBD,
-  title   = {TBD},
-  author  = {Aksoy, Altug},
-  journal = {TBD},
-  year    = {TBD},
-  doi     = {TBD}
+@article{Aksoy_HRDOBS_pending,
+  title   = {HRDOBS: A Comprehensive, AI-Ready Dataset for Standardized Observations Collected in and Around North Atlantic Tropical Cyclones},
+  author  = {Aksoy, Altug and Sellwood, Kathryn and Aberson, Sim and Dahl, Brittany},
+  journal = {Bulletin of the American Meteorological Society},
+  year    = {2026},
+  note    = {Submitted for publication}
 }""", language="latex")
 
     st.markdown("---")
@@ -165,12 +165,12 @@ Scientist, *CIMAS/Rosenstiel School, University of Miami*
         """)
 
     with col_auth2:
-        st.markdown("#### 💻 Dataset & Source Code")
+        st.markdown("#### 💻 Resources & Availability")
         st.markdown("""
-        The HRDOBS v1.0 dataset DOI will be made publicly available along with the publication of the companion paper. The source code can be accessed at:
+        * **Dataset:** The HRDOBS v1.0 dataset has been submitted to NCEI. The official dataset DOI will be linked here once minted.
+        * **Manuscript:** The companion paper is currently under review at BAMS. Its official publication DOI will be linked here once available.
+        * **Source Code:** The codebase for this visualizer is publicly available at: [https://github.com/aaksoy-umiami/hrdobs_visualization](https://github.com/aaksoy-umiami/hrdobs_visualization)
         
-        [https://github.com/aaksoy-umiami/hrdobs_visualization](https://github.com/aaksoy-umiami/hrdobs_visualization)
-
         For early access or collaboration inquiries, please reach out directly via
         the contact information provided.
         """)
@@ -186,7 +186,7 @@ Scientist, *CIMAS/Rosenstiel School, University of Miami*
     **Feedback welcome!** If you encounter bugs or have feature suggestions, please contact the
     author at the email address above.
 
-    *This application is optimized for desktop environments. Users on smaller screens may
+    *This application is optimized for Streamlit version 1.57.0 on desktop environments. Users on smaller screens may
     experience layout or performance limitations.*
     """)
 
