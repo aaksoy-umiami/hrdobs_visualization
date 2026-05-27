@@ -22,7 +22,7 @@ Built to streamline the visualization of complex atmospheric data, this companio
 ## Research & Authorship
 This tool was developed by **Dr. Altug Aksoy** (University of Miami / CIMAS) to assist researchers, meteorologists, and students in interacting with hurricane observation data.
 
-*(Note: The HRDOBS v1.0 dataset has been submitted to NCEI. The official DOIs for both the publication and the dataset will be added here once they are minted and available). Additionally, a companion manuscript titled "HRDOBS: A Comprehensive, AI-Ready Dataset for Standardized Observations Collected in and Around North Atlantic Tropical Cyclones" by Altug Aksoy, Kathryn Sellwood, Sim Aberson, and Brittany Dahl has been submitted to the Bulletin of the American Meteorological Society (BAMS) and is currently under review.*
+*Note: The HRDOBS v1.0 dataset has been submitted to NCEI. The official DOIs for both the publication and the dataset will be added here once they are minted and available. Additionally, a companion manuscript titled "HRDOBS: A Comprehensive, AI-Ready Dataset for Standardized Observations Collected in and Around North Atlantic Tropical Cyclones" by Altug Aksoy, Kathryn Sellwood, Sim Aberson, and Brittany Dahl has been submitted to the Bulletin of the American Meteorological Society (BAMS) and is currently under review.*
 
 ---
 
