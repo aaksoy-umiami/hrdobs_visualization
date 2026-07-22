@@ -12,8 +12,10 @@ Functions/Classes:
     - inject_derived_fields: Adds derived metrics and coordinates to data.
     - compute_global_domain: Calculates a bounding box across all spatial data.
     - compute_vert_bounds: Computes vertical slider bounds for all groups.
+    - fetch_hrdobs_file_from_ftp: Fetches an HRDOBS HDF5 file from the HRD public FTP server into memory.
 """
 
+import urllib.request
 import pandas as pd
 import numpy as np
 import h5py
@@ -520,3 +522,28 @@ def compute_vert_bounds(data_pack):
         if grp_bounds:
             bounds[grp] = grp_bounds
     data_pack['vert_bounds'] = bounds
+
+@st.cache_data(show_spinner=False)
+def fetch_hrdobs_file_from_ftp(filename: str) -> bytes:
+    """
+    Fetches an HRDOBS HDF5 file from the HRD public FTP server into memory.
+    """
+    # Extract the 4-digit year from the filename to route to the correct yearly directory
+    year_match = re.search(r'(19|20)\d{2}', filename)
+    year = year_match.group(0) if year_match else ""
+    
+    # Append the year directory to the path if successfully found
+    dir_path = f"{year}/" if year else ""
+    
+    # Construct the final FTP URL
+    ftp_base_url = "ftp://ftp.aoml.noaa.gov/pub/hrd/data/hrdobs/"
+    file_url = f"{ftp_base_url}{dir_path}{filename}"
+    
+    try:
+        # urllib.request natively handles anonymous FTP authentication
+        # A 30-second timeout prevents the UI from hanging indefinitely on bad connections
+        with urllib.request.urlopen(file_url, timeout=30) as response:
+            file_bytes = response.read()
+        return file_bytes
+    except Exception as e:
+        raise RuntimeError(f"Could not download {filename} from the HRD archive. Error: {e}")

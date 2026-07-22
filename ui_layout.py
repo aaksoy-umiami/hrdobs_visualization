@@ -210,7 +210,9 @@ def setup_page():
         /* ------------------------------------------------------------------ */
         /* Hide the marker's parent container completely */
         [data-testid="stElementContainer"]:has(.light-btn-marker),
-        .element-container:has(.light-btn-marker) {{
+        [data-testid="stElementContainer"]:has(.quick-load-marker),
+        .element-container:has(.light-btn-marker),
+        .element-container:has(.quick-load-marker) {{
             display: none !important;
             height: 0px !important;
             margin: 0px !important;
@@ -241,6 +243,9 @@ def setup_page():
         [data-testid="stHorizontalBlock"]:has([data-testid="stDownloadButton"]) {{
             border-bottom: none !important;
             margin-bottom: 0px !important;
+        }}
+        [data-testid="stHorizontalBlock"]:has(.quick-load-marker) {{
+            border-bottom: none !important;
         }}
     </style>
     """, unsafe_allow_html=True)

@@ -176,9 +176,14 @@ def display_summary_table(final_df, unit):
     st.markdown(f"<div style='max-height: 400px; overflow-x: auto; overflow-y: auto;'>{styled_html}</div>", unsafe_allow_html=True)
 
 
-def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
+def display_explorer_table(final_df, unit, sort_col_internal, is_asc, row_numbers=None):
     """
     Renders the detailed multi-index file table with hover tooltips and dynamic color formatting.
+
+    row_numbers, when provided, must be a sequence the same length as final_df giving the
+    1-based position of each row in the current sort order. It is rendered as a leading '#'
+    column so rows can be visually matched against the quick-load dropdown, which is built
+    from the same sorted order.
     """
     
     final_df['Storm_Display'] = final_df.apply(lambda x: f"{x['Storm']}|||{x['Constructed_File_Name']}", axis=1)
@@ -191,6 +196,11 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
     obs_groups = [g for g in EXPECTED_GROUPS if g != 'ships_params']
     display_df = final_df[base_cols + ships_present + obs_groups].copy()
     display_df['Intensity_ms'] *= (MS_TO_KTS if unit == "knots" else 1.0)
+
+    if row_numbers is not None:
+        # Assigned positionally (not index-aligned), since row_numbers reflects
+        # the current sort order that final_df was already sorted into.
+        display_df.insert(0, 'Row_Num', list(row_numbers))
     
     multi_cols = []
     fmt_map = {}
@@ -202,7 +212,8 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
     sort_tup_old = None
 
     for i, raw_col in enumerate(display_df.columns):
-        if raw_col == 'Year': tup = ('Basic Data', 'Year')
+        if raw_col == 'Row_Num': tup = ('Basic Data', 'Row No.'); fmt_map[tup] = '{:,.0f}'; numeric_cols.append(tup)
+        elif raw_col == 'Year': tup = ('Basic Data', 'Year')
         elif raw_col == 'Storm_Display': tup = ('Basic Data', 'Storm')
         elif raw_col == 'Basin': tup = ('Basic Data', 'Basin')
         elif raw_col == 'Cycle_Display': tup = ('Basic Data', 'Cycle')
@@ -255,7 +266,13 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc):
     def make_storm_hover(val):
         if '|||' in str(val):
             name, filename = str(val).split('|||')
-            return f'<span title="{filename}" style="cursor:help; border-bottom: 1px dotted #ccc;">{name}</span>'
+            
+            # Create a link that reloads the app with a specific query parameter
+            # target="_self" ensures it stays in the same browser tab
+            return (f'<a href="?fetch={filename}" target="_self" '
+                    f'title="Click to instantly load {filename} in Plotter" '
+                    f'style="cursor:pointer; border-bottom: 1px dotted #ccc; color: #1f77b4; text-decoration: none;">'
+                    f'{name}</a>')
         return val
 
     fmt_map[('Basic Data', 'Storm')] = make_storm_hover

@@ -14,7 +14,15 @@ import os
 from datetime import datetime
 
 from config import EXPECTED_GROUPS
-from data_utils import load_inventory_db
+
+from data_utils import (
+    load_inventory_db,
+    load_data_from_h5, 
+    inject_derived_fields, 
+    compute_global_domain, 
+    compute_vert_bounds, 
+    fetch_hrdobs_file_from_ftp
+)
 
 from ui_explorer_controls import render_explorer_controls, get_dropdown_mask, MS_TO_KTS, SHIPS_CONFIG
 from ui_components import spacer
@@ -95,21 +103,110 @@ def render_explorer_tab():
         spacer('md')
         st.markdown(f"#### 🔎 Found **{len(final_df)}/{len(db_df)}** matching files")
 
+        # === Resolve sort options + apply the active sort ONCE, here, before
+        # anything downstream (quick-load dropdown, CSV export, detailed table)
+        # consumes final_df. This guarantees the dropdown list and the table
+        # rows are always built from the exact same ordering. ===
+        sort_options = {
+            "Year": "Year", "Storm Name": "Storm", "Basin": "Basin",
+            "Cycle (Time)": "Cycle_Raw", "Latitude": "Lat", "Longitude": "Lon",
+            "Intensity": "Intensity_ms", "MSLP": "MSLP_hPa",
+            "Intensity Category": "TC_Category",
+        }
+        for g in EXPECTED_GROUPS:
+            if g in final_df.columns:
+                sort_options[g.replace('_', ' ').title()] = g
+
+        st.session_state.setdefault('ui_sort_col', 'Year')
+        st.session_state.setdefault('ui_sort_order', 'Ascending')
+
+        sort_col_internal = sort_options.get(st.session_state['ui_sort_col'], 'Year')
+        is_asc = st.session_state['ui_sort_order'] == "Ascending"
+
+        sort_cols = [sort_col_internal]
+        asc_list  = [is_asc]
+        for tb in ['Year', 'Storm', 'Cycle_Raw']:
+            if tb != sort_col_internal:
+                sort_cols.append(tb)
+                asc_list.append(True)
+
+        final_df = final_df.sort_values(by=sort_cols, ascending=asc_list)
+
+        # Row numbers matching the exact sorted order, shared by the dropdown
+        # (as a "#N —" prefix) and the detailed table (as a leading '#' column).
+        row_numbers = list(range(1, len(final_df) + 1))
+
+        with st.container(border=True):
+            st.write("Select a file from your filtered results below to instantly load it into memory and jump to the visualizer:")
+
+            available_filtered_files = final_df['Constructed_File_Name'].tolist()
+            row_lookup = dict(zip(available_filtered_files, row_numbers))
+
+            if available_filtered_files:
+                col_sel, col_btn = st.columns([3, 1])
+                col_btn.markdown('<div class="quick-load-marker" style="display:none;"></div>', unsafe_allow_html=True)
+
+                # The widget's key is tied to the active sort so Streamlit always
+                # builds a fresh widget instance when the sort changes (a plain
+                # reorder of an existing keyed selectbox's `options` isn't always
+                # reflected on the next rerun otherwise). The user's previously
+                # selected file is restored by value, not by relying on Streamlit's
+                # own per-key state, so switching sort doesn't lose the selection.
+                quick_load_key = f"quick_load_selectbox_{sort_col_internal}_{is_asc}"
+                prev_selection = st.session_state.get('_quick_load_last_selected')
+                default_index = (
+                    available_filtered_files.index(prev_selection)
+                    if prev_selection in available_filtered_files else 0
+                )
+
+                with col_sel:
+                    selected_teleport_file = st.selectbox(
+                        "Select File:", 
+                        available_filtered_files, 
+                        index=default_index,
+                        format_func=lambda fname: f"#{row_lookup.get(fname, '?')} — {fname}",
+                        label_visibility="collapsed",
+                        key=quick_load_key
+                    )
+                    st.session_state['_quick_load_last_selected'] = selected_teleport_file
+                    
+                with col_btn:
+                    if st.button("Fetch & Open Plotter", type="primary", width="stretch", key="quick_load_btn"):
+                        with st.spinner(f"Fetching {selected_teleport_file} from HRD Archive..."):
+                            try:
+                                # 1. Fetch the bytes via FTP
+                                file_bytes = fetch_hrdobs_file_from_ftp(selected_teleport_file)
+                                
+                                # 2. Process into the data_pack
+                                raw_data_pack = load_data_from_h5(file_bytes)
+                                inject_derived_fields(raw_data_pack)
+                                compute_global_domain(raw_data_pack)
+                                compute_vert_bounds(raw_data_pack)
+                                
+                                # 3. Save to session state
+                                st.session_state['data_pack'] = raw_data_pack
+                                st.session_state['last_uploaded_filename'] = selected_teleport_file
+                                
+                                # Clear out old analysis state to prevent conflicts
+                                st.session_state.pop('cleared_data_pack', None)
+                                st.session_state.pop('cleared_data_pack_analysis', None)
+                                
+                                # 4. Teleport the user to Tab 2
+                                st.session_state.selected_tab_index = 1
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"Failed to fetch file: {e}")
+            else:
+                st.info("No files available for quick load.")
+        
+        spacer('sm')
+
         def reset_table_sort():
             st.session_state.ui_sort_col   = 'Year'
             st.session_state.ui_sort_order = 'Ascending'
 
         with st.container(border=True):
-            sort_options = {
-                "Year": "Year", "Storm Name": "Storm", "Basin": "Basin",
-                "Cycle (Time)": "Cycle_Raw", "Latitude": "Lat", "Longitude": "Lon",
-                "Intensity": "Intensity_ms", "MSLP": "MSLP_hPa",
-                "Intensity Category": "TC_Category",
-            }
-            for g in EXPECTED_GROUPS:
-                if g in final_df.columns:
-                    sort_options[g.replace('_', ' ').title()] = g
-
             sc1, sc2, sc3, sc4, sc5 = st.columns([1.6, 1.5, 1.1, 0.5, 1.5])
             with sc1:
                 st.selectbox("Sort Table By Column:", list(sort_options.keys()),
@@ -121,20 +218,6 @@ def render_explorer_tab():
                 spacer('lg')
                 st.button("🔄 Reset Sort", key="btn_reset_sort", type="secondary",
                         width="stretch", on_click=reset_table_sort)
-
-            sort_col_internal = sort_options.get(
-                st.session_state.get('ui_sort_col', 'Year'), 'Year'
-            )
-            is_asc = st.session_state.get('ui_sort_order', 'Ascending') == "Ascending"
-
-            sort_cols = [sort_col_internal]
-            asc_list  = [is_asc]
-            for tb in ['Year', 'Storm', 'Cycle_Raw']:
-                if tb != sort_col_internal:
-                    sort_cols.append(tb)
-                    asc_list.append(True)
-
-            final_df = final_df.sort_values(by=sort_cols, ascending=asc_list)
             
             header_lines = [
                 f"# HRDOBS Dataset Explorer Export",
@@ -203,4 +286,4 @@ def render_explorer_tab():
                 )
 
         spacer('sm')
-        display_explorer_table(final_df, intent.unit, sort_col_internal, is_asc)
+        display_explorer_table(final_df, intent.unit, sort_col_internal, is_asc, row_numbers)

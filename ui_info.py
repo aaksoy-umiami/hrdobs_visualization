@@ -269,7 +269,9 @@ def _render_usage():
     2. **Configure** your view using the options in the left sidebar. Results update automatically—no "Run" button is needed!
     3. **File Upload Requirements:**
        - No file upload is needed for Tab 1 as it uses its own built-in database.
-       - Tabs 2 and 3 require uploading one hdf5 file from the dataset to memory.
+       - Tabs 2 and 3 require uploading one hdf5 file from the dataset to memory:
+         - Use the loader on Tab 1 (after performing a filter), or
+         - Upload from your computer on Tabs 2 and 3.
     4. **Shared Memory:** Data uploaded in the *Individual File Plotter* tab (Tab 2) is automatically shared with the *Individual File Statistical Analysis* tab (Tab 3). You only need to load your file once.
     
     #### 💡 Chart Controls and Saving Figures
