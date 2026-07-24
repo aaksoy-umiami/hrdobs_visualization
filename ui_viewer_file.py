@@ -1,29 +1,30 @@
 # -*- coding: utf-8 -*-
 """
 Purpose:
-    Provides the file upload and metadata inspection interface for the File Data Viewer and Statistical Analysis tabs.
+    Provides the file loading and metadata inspection interface for the File Data Viewer and Statistical Analysis tabs.
 
 Functions/Classes:
-    - render_file_upload_section: Renders the file upload container, processes HDF5 files, and handles cross-tab data inheritance.
+    - render_file_upload_section: Renders the file loading container, supporting manual upload and retrieval of a Dataset Explorer result from the online archive, and handles cross-tab data inheritance.
 """
 
 import streamlit as st
 import pandas as pd
 
-from config import EXPECTED_GROUPS, EXPECTED_META, SHIPS_PREDICTOR_META
+from config import EXPECTED_GROUPS, EXPECTED_META, SUPPRESSED_META, SHIPS_PREDICTOR_META
 from data_utils import (
     load_data_from_h5, 
     decode_metadata, 
     inject_derived_fields, 
     compute_global_domain, 
-    compute_vert_bounds
+    compute_vert_bounds,
+    fetch_hrdobs_file_from_ftp,
 )
 from ui_layout import CLR_MUTED, CLR_SUCCESS, CLR_EXTRA, FS_TABLE, FS_BODY
 
 
 def render_file_upload_section(data_pack_key, filename_key, state_keys, state_dict_key):
     """
-    Renders the file upload container, processes HDF5 files, and handles cross-tab data inheritance.
+    Renders the file loading container, supporting manual upload and retrieval of a Dataset Explorer result from the online archive, and handles cross-tab data inheritance.
     """
     data_pack = st.session_state.get(data_pack_key)
     
@@ -39,6 +40,7 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
         st.markdown("### 📁 File Upload")
 
         if data_pack is None:
+            st.markdown("**Option 1:** Manual upload")
             uploaded_file = st.file_uploader(
                 "Upload an AI-Ready HDF5 file",
                 type=['h5', 'hdf5'],
@@ -67,9 +69,64 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                         except Exception as e:
                             st.error(f"Failed to load file: {e}")
                             st.stop()
+
+            explorer_files = st.session_state.get('explorer_available_files', [])
+            explorer_row_lookup = st.session_state.get('explorer_row_lookup', {})
+            explorer_select_key = f"explorer_quick_load_{data_pack_key}"
+
+            st.markdown("**Option 2:** Load online from Dataset Explorer filtered results:")
+
+            if explorer_files:
+                # Drop a stored selection that is no longer among the current
+                # results, which would otherwise be an invalid selectbox option.
+                if st.session_state.get(explorer_select_key) not in explorer_files:
+                    st.session_state.pop(explorer_select_key, None)
+
+                col_sel, col_btn = st.columns([2, 1])
+                with col_sel:
+                    selected_explorer_file = st.selectbox(
+                        "Select from filtered results:",
+                        explorer_files,
+                        format_func=lambda fname: f"#{explorer_row_lookup.get(fname, '?')} — {fname}",
+                        label_visibility="collapsed",
+                        key=explorer_select_key,
+                    )
+                with col_btn:
+                    do_fetch = st.button("Load", key=f"explorer_fetch_btn_{data_pack_key}",
+                                         type="primary", width="stretch")
+
+                if do_fetch:
+                    with st.spinner(f"Fetching {selected_explorer_file} from HRD Archive..."):
+                        try:
+                            file_bytes = fetch_hrdobs_file_from_ftp(selected_explorer_file)
+                            raw_data_pack = load_data_from_h5(file_bytes)
+                            inject_derived_fields(raw_data_pack)
+                            compute_global_domain(raw_data_pack)
+                            compute_vert_bounds(raw_data_pack)
+
+                            st.session_state[data_pack_key] = raw_data_pack
+                            st.session_state[filename_key] = selected_explorer_file
+
+                            st.session_state.pop('cleared_data_pack', None)
+                            st.session_state.pop('cleared_data_pack_analysis', None)
+
+                            for k in state_keys:
+                                st.session_state.pop(k, None)
+                            st.session_state[state_dict_key] = {}
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to fetch file: {e}")
+            else:
+                st.caption(
+                    "No Dataset Explorer results yet — apply filters on the "
+                    "**Dataset Explorer** tab to populate this list."
+                )
+                if st.button("Go to Dataset Explorer", key=f"goto_explorer_{data_pack_key}", width="stretch"):
+                    st.session_state.selected_tab_index = 0
+                    st.rerun()
         else:
             st.success(f"📂 **File Loaded to Memory:**\n{st.session_state.get(filename_key, 'Unknown')}")
-            if st.button("🗑️ Clear Memory & Upload New File", key=f"clear_{data_pack_key}"):
+            if st.button("🗑️ Clear Memory & Load New File", key=f"clear_{data_pack_key}", width="stretch"):
                 del st.session_state[data_pack_key]
                 if filename_key in st.session_state:
                     del st.session_state[filename_key]
@@ -112,7 +169,7 @@ def render_file_upload_section(data_pack_key, filename_key, state_keys, state_di
                             f"<td style='padding: 6px; color: red;'>❌ Missing</td></tr>"
                         )
                 for m in [k for k in current_pack['meta']['info'].keys()
-                          if k not in EXPECTED_META]:
+                          if k not in EXPECTED_META and k not in SUPPRESSED_META]:
                     val = decode_metadata(current_pack['meta']['info'][m])
                     meta_html += (
                         f"<tr><td style='padding: 6px; color: blue;'>"

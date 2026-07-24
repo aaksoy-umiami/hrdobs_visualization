@@ -270,8 +270,8 @@ def _render_usage():
     3. **File Upload Requirements:**
        - No file upload is needed for Tab 1 as it uses its own built-in database.
        - Tabs 2 and 3 require uploading one hdf5 file from the dataset to memory:
-         - Use the loader on Tab 1 (after performing a filter), or
-         - Upload from your computer on Tabs 2 and 3.
+         - Use the manual upload (Option 1) to use a file from your computer, or
+         - Use the automated upload (Option 2) to use a file from the official HRDOBS online repository.
     4. **Shared Memory:** Data uploaded in the *Individual File Plotter* tab (Tab 2) is automatically shared with the *Individual File Statistical Analysis* tab (Tab 3). You only need to load your file once.
     
     #### 💡 Chart Controls and Saving Figures
@@ -292,6 +292,7 @@ def _render_usage():
        - **View Summary Table of Filtered Results:** Shows a storm-based summary table for the filters applied.
        - **View Summary Graphics of Filtered Results:** Displays summary graphics based on the filters applied.
     3. **Download** the customized list as a CSV file to your local computer for external reference.
+    4. **Load** any file from the filtered list on Tabs 2 or 3, where it is available from the sidebar's automated upload (Option 2).
 
     ---
 
@@ -299,7 +300,7 @@ def _render_usage():
     **Purpose:** Visualize spatial and vertical data from a single HRDOBS HDF5 file.
 
     **Quick Start:**
-    1. **Upload** an `.h5` or `.hdf5` file using the sidebar.
+    1. **Load** an `.h5` or `.hdf5` file using the sidebar, either by manual upload from your computer (Option 1) or from the Dataset Explorer filtered results in the online repository (Option 2).
     2. **Select** the observation group (e.g., dropsonde, radar) and the variable you want to see.
     3. **Choose** your plot type: 
        - **Horizontal Cartesian:** A standard geographic map view.

@@ -17,7 +17,10 @@ EXPECTED_GROUPS = [
 ]
 
 EXPECTED_META = [
-    "center_from_tc_vitals", 
+    "center_lat_from_tc_vitals",
+    "center_lat_from_tc_vitals_units",
+    "center_lon_from_tc_vitals",
+    "center_lon_from_tc_vitals_units",
     "creator_email", 
     "creator_name",
     "existing_groups", 
@@ -43,6 +46,16 @@ EXPECTED_META = [
     "title", 
     "version_number",
     "Virtual_Manifest"
+]
+
+# Obsolete combined fields retained in files converted before the metadata
+# split ('storm_motion' superseded by storm_motion_heading_deg /
+# storm_motion_speed_kt, 'center_from_tc_vitals' by center_lat_from_tc_vitals /
+# center_lon_from_tc_vitals). Hidden from the global metadata table rather than
+# reported as "Extra".
+SUPPRESSED_META = [
+    "storm_motion",
+    "center_from_tc_vitals",
 ]
 
 AVAILABLE_COLORSCALES = [

@@ -7,6 +7,7 @@ Purpose:
 Functions/Classes:
     - display_summary_table: Aggregates and renders a summary table grouped by individual storms.
     - display_explorer_table: Renders the detailed multi-index file table with hover tooltips and dynamic color formatting.
+    - _build_explorer_table_html: Builds and caches the styled HTML for the detailed multi-index file table.
 """
 
 import pandas as pd
@@ -181,14 +182,28 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc, row_number
     Renders the detailed multi-index file table with hover tooltips and dynamic color formatting.
 
     row_numbers, when provided, must be a sequence the same length as final_df giving the
-    1-based position of each row in the current sort order. It is rendered as a leading '#'
-    column so rows can be visually matched against the quick-load dropdown, which is built
-    from the same sorted order.
+    1-based position of each row in the current sort order. It is rendered as a leading
+    'Row No.' column so rows can be matched against the sidebar loader dropdown on the
+    plotting tabs, which is built from the same sorted order.
     """
-    
+    styled_html = _build_explorer_table_html(final_df, unit, sort_col_internal, is_asc, row_numbers)
+    st.markdown(f"<div style='height: 700px; overflow-y: auto;'>{styled_html}</div>", unsafe_allow_html=True)
+
+
+@st.cache_data(show_spinner=False)
+def _build_explorer_table_html(final_df, unit, sort_col_internal, is_asc, row_numbers=None):
+    """
+    Builds the styled HTML for the detailed multi-index file table.
+
+    Cached because formatting a Styler across dozens of columns for hundreds of rows is
+    expensive and would otherwise be repeated on every script rerun, including reruns
+    where the filters and sort are unchanged.
+    """
+    final_df = final_df.copy()
     final_df['Storm_Display'] = final_df.apply(lambda x: f"{x['Storm']}|||{x['Constructed_File_Name']}", axis=1)
 
-    base_cols = ['Year', 'Storm_Display', 'Basin', 'Cycle_Display', 'Lat', 'Lon', 'Intensity_ms', 'MSLP_hPa', 'TC_Category']
+    size_cols = ['File_Size_MB'] if 'File_Size_MB' in final_df.columns else []
+    base_cols = size_cols + ['Year', 'Storm_Display', 'Basin', 'Cycle_Display', 'Lat', 'Lon', 'Intensity_ms', 'MSLP_hPa', 'TC_Category']
     ships_cols = ['incv_kt', 'dtl_km', 'shrd_kt', 'shtd_deg', 'rhmd_pct', 'nsst_degc', 'nohc_kjcm2', 'vmpi_kt']
     
     ships_present = [c for c in ships_cols if c in final_df.columns]
@@ -198,8 +213,8 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc, row_number
     display_df['Intensity_ms'] *= (MS_TO_KTS if unit == "knots" else 1.0)
 
     if row_numbers is not None:
-        # Assigned positionally (not index-aligned), since row_numbers reflects
-        # the current sort order that final_df was already sorted into.
+        # Positional assignment: row_numbers already follows the sort order of
+        # final_df, whose pandas index is non-sequential after filtering.
         display_df.insert(0, 'Row_Num', list(row_numbers))
     
     multi_cols = []
@@ -213,6 +228,7 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc, row_number
 
     for i, raw_col in enumerate(display_df.columns):
         if raw_col == 'Row_Num': tup = ('Basic Data', 'Row No.'); fmt_map[tup] = '{:,.0f}'; numeric_cols.append(tup)
+        elif raw_col == 'File_Size_MB': tup = ('Basic Data', 'File Size<br>(MB)'); fmt_map[tup] = '{:,.2f}'; numeric_cols.append(tup)
         elif raw_col == 'Year': tup = ('Basic Data', 'Year')
         elif raw_col == 'Storm_Display': tup = ('Basic Data', 'Storm')
         elif raw_col == 'Basin': tup = ('Basic Data', 'Basin')
@@ -294,4 +310,4 @@ def display_explorer_table(final_df, unit, sort_col_internal, is_asc, row_number
         ]).hide(axis="index").to_html(escape=False)
     )
     
-    st.markdown(f"<div style='height: 700px; overflow-y: auto;'>{styled_html}</div>", unsafe_allow_html=True)
+    return styled_html

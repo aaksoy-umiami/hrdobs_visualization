@@ -191,6 +191,14 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
             st.session_state[f"_last_t_max_ui_ships_{c}"] = b[1]
 
     st.sidebar.markdown(f"### 🌍 Apply Filters Below to List Matching Files")
+
+    st.sidebar.caption(
+        "Note: each **Deselect All** button clears only the single filter it "
+        "sits under. To clear every filter at once, use **Reset All Filters** "
+        "(available here and at the bottom of the sidebar)."
+    )
+    st.sidebar.button("🔄 Reset All Filters", type="secondary", width="stretch",
+                      on_click=reset_all_filters, key="btn_reset_all_top")
     
     with st.sidebar.container(border=True):
         st.markdown("#### Filter by Storm Information")
@@ -415,7 +423,8 @@ def render_explorer_controls(db_df, has_vars, raw_min_i, raw_max_i, raw_min_p, r
                                  data_min=t_min, data_max=t_max, 
                                  step=config['step'], key=state_key, label_visibility="collapsed")
 
-    st.sidebar.button("🔄 Reset All Filters", type="secondary", width="stretch", on_click=reset_all_filters)
+    st.sidebar.button("🔄 Reset All Filters", type="secondary", width="stretch",
+                      on_click=reset_all_filters, key="btn_reset_all_bottom")
 
     sync_namespace('ui_', 'explorer_state')
 

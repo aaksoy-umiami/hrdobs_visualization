@@ -108,6 +108,10 @@ def load_inventory_db(db_path):
             df[col] = df[col].astype(str).str.replace(r'[\[\]]', '', regex=True)
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
+    if 'File_Size_Bytes' in df.columns:
+        df['File_Size_Bytes'] = pd.to_numeric(df['File_Size_Bytes'], errors='coerce')
+        df['File_Size_MB'] = df['File_Size_Bytes'] / (1024 ** 2)
+
     if 'MSLP_hPa' in df.columns:
         df.loc[df['MSLP_hPa'] > 2000, 'MSLP_hPa'] /= 100.0
             

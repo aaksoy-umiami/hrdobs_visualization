@@ -28,6 +28,7 @@ from config import (
     DOMAIN_LAT_MIN, DOMAIN_LAT_MAX, DOMAIN_LON_MIN, DOMAIN_LON_MAX
 )
 
+@st.cache_data(show_spinner=False)
 def _prep_plot_data(df: pd.DataFrame, unit: str, is_bg_tracks: bool = False):
     """
     Prepares the main plot dataframe and the clipped map dataframe.
@@ -71,6 +72,7 @@ def _prep_plot_data(df: pd.DataFrame, unit: str, is_bg_tracks: bool = False):
         
     return plot_df, map_df
 
+@st.cache_data(show_spinner=False)
 def _build_category_map(map_df: pd.DataFrame, unit: str, bg_df: pd.DataFrame = None) -> go.Figure:
     """
     Builds the geographic scatter map colored by category.
@@ -140,6 +142,7 @@ def _build_category_map(map_df: pd.DataFrame, unit: str, bg_df: pd.DataFrame = N
     )
     return fig
 
+@st.cache_data(show_spinner=False)
 def _build_category_histogram(plot_df: pd.DataFrame) -> go.Figure:
     """
     Builds the bar chart showing file counts per category.
@@ -172,6 +175,7 @@ def _build_category_histogram(plot_df: pd.DataFrame) -> go.Figure:
     fig_hist.add_shape(type='line', xref='paper', yref='y', x0=0, x1=1, y0=0, y1=0, line=dict(color=CLR_PRIMARY, width=2))
     return fig_hist
 
+@st.cache_data(show_spinner=False)
 def _build_wind_pressure_scatter(plot_df: pd.DataFrame, unit: str) -> go.Figure:
     """
     Builds the scatter plot of wind intensity vs MSLP with an optional trendline.
@@ -232,6 +236,7 @@ def _build_wind_pressure_scatter(plot_df: pd.DataFrame, unit: str) -> go.Figure:
     )
     return fig_wp
 
+@st.cache_data(show_spinner=False)
 def _build_observations_bar_chart(plot_df: pd.DataFrame) -> go.Figure:
     """
     Builds the log-scaled bar chart representing observation counts per platform.

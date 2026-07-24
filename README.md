@@ -11,9 +11,10 @@ Built to streamline the visualization of complex atmospheric data, this companio
 
 ### Key Features
 * **Inventory Explorer:** Search and filter the built-in HRDOBS inventory database to locate specific storms and datasets.
+* **Direct Archive Access:** Load any file from the filtered inventory results straight from the official HRDOBS online repository, with no manual download required. Files can also be uploaded manually from your own computer.
 * **Interactive Data Viewer:** Visualize spatial observation data using customizable basemaps and interactive plotting tools. 
 * **Modular Analysis Suite:** Access dedicated analysis and domain-viewing controls for deep-dives into specific hurricane events.
-* **Extensible Architecture:** Built with Streamlit, the app separates UI layout, data utilities (`data_utils.py`), and rendering (`plotter.py`, `basemap.py`) for easy academic extension.
+* **Extensible Architecture:** Built with Streamlit, the app separates UI layout, data utilities (`data_utils.py`), and rendering (`plotter.py`, `plotter_basemap.py`) for easy academic extension.
 
 ## Requirements
 * **Streamlit 1.57.0** is strictly required to ensure full functionality. 

@@ -210,9 +210,7 @@ def setup_page():
         /* ------------------------------------------------------------------ */
         /* Hide the marker's parent container completely */
         [data-testid="stElementContainer"]:has(.light-btn-marker),
-        [data-testid="stElementContainer"]:has(.quick-load-marker),
-        .element-container:has(.light-btn-marker),
-        .element-container:has(.quick-load-marker) {{
+        .element-container:has(.light-btn-marker) {{
             display: none !important;
             height: 0px !important;
             margin: 0px !important;
@@ -244,8 +242,82 @@ def setup_page():
             border-bottom: none !important;
             margin-bottom: 0px !important;
         }}
-        [data-testid="stHorizontalBlock"]:has(.quick-load-marker) {{
+
+        /* ------------------------------------------------------------------ */
+        /* Sidebar Dataset Explorer loader controls                            */
+        /* ------------------------------------------------------------------ */
+        /* Scoped via the st-key-<key> classes Streamlit emits for keyed
+           widgets, so only the loader dropdown and button are affected and not
+           the other sidebar selectboxes. Filenames are long, so the selected
+           value is shrunk to keep it on one line. */
+        [class*="st-key-explorer_quick_load"] div[data-baseweb="select"] > div {{
+            font-size: {FS_MICRO}px !important;
+            min-height: 34px !important;
+            height: 34px !important;
+            align-items: center !important;
+        }}
+        [class*="st-key-explorer_quick_load"] label p {{
+            font-size: {FS_BODY}px !important;
+        }}
+        [class*="st-key-explorer_fetch_btn"] button {{
+            min-height: 34px !important;
+            height: 34px !important;
+            padding: 0px 10px !important;
+        }}
+        [class*="st-key-explorer_fetch_btn"] button p {{
+            font-size: {FS_BUTTON}px !important;
+        }}
+        /* Exempts the dropdown/Load row from the tab-navigation border rule
+           above, which targets any column block containing a primary button,
+           and centers the two columns so they read as one line. */
+        [data-testid="stHorizontalBlock"]:has([class*="st-key-explorer_fetch_btn"]) {{
             border-bottom: none !important;
+            margin-bottom: 0px !important;
+            align-items: center !important;
+        }}
+
+        /* ------------------------------------------------------------------ */
+        /* Sidebar file uploader compaction                                    */
+        /* ------------------------------------------------------------------ */
+        /* The uploader's label is collapsed but still reserves vertical space.
+           This is the only file_uploader in the app, so the broad test id is
+           safe here. */
+        [data-testid="stFileUploader"] label {{
+            display: none !important;
+            height: 0px !important;
+            margin: 0px !important;
+            padding: 0px !important;
+        }}
+        /* Matches the gap under the "Option 1" heading to the one under
+           "Option 2". */
+        [class*="st-key-uploader_"] {{
+            margin-top: -0.6rem !important;
+        }}
+        /* Collapses the dropzone to a single row by hiding the tall
+           "Drag and drop file here" instruction line, leaving the size/type
+           note and the Browse button side by side. */
+        [class*="st-key-uploader_"] [data-testid="stFileUploaderDropzone"] {{
+            padding: 6px 10px !important;
+            min-height: 0px !important;
+        }}
+        [class*="st-key-uploader_"] [data-testid="stFileUploaderDropzoneInstructions"] {{
+            padding: 0px !important;
+            margin: 0px !important;
+        }}
+        [class*="st-key-uploader_"] [data-testid="stFileUploaderDropzoneInstructions"] span {{
+            display: none !important;
+        }}
+        [class*="st-key-uploader_"] [data-testid="stFileUploaderDropzoneInstructions"] small {{
+            font-size: {FS_MICRO}px !important;
+            line-height: 1.2 !important;
+        }}
+        [class*="st-key-uploader_"] [data-testid="stFileUploaderDropzone"] button {{
+            min-height: 30px !important;
+            height: 30px !important;
+            padding: 0px 10px !important;
+        }}
+        [class*="st-key-uploader_"] [data-testid="stFileUploaderDropzone"] button p {{
+            font-size: {FS_BUTTON}px !important;
         }}
     </style>
     """, unsafe_allow_html=True)

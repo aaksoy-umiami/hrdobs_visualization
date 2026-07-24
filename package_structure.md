@@ -11,7 +11,7 @@ hrdobs_companion.py                  ← App entry point (tab routing, page setu
 │
 ├── [Tab 2] ui_viewer.py             ← Single-File Plotter tab
 │   ├── ui_viewer_controls.py        ← Sidebar controls (variable, plot type, plotting options)
-│   ├── ui_viewer_file.py            ← File upload, HDF5 memory processing, metadata/SHIPS inspection
+│   ├── ui_viewer_file.py            ← File loading (manual upload or online repository), HDF5 memory processing, metadata/SHIPS inspection
 │   └── ui_viewer_domain.py          ← Spatial and temporal domain limits (sliders, auto-fit/reset)
 │
 ├── [Tab 3] ui_analysis.py           ← Single-File Statistical Analysis tab (data distributions, statistics)
@@ -124,8 +124,12 @@ ui_explorer.py  ← Applies filters, sorts, and coordinates outputs
         ├──▶ ui_explorer_table.display_summary_table()
         │         Builds storm-level aggregated summary view
         │
-        └──▶ ui_explorer_table.display_explorer_table()
-                  Builds detailed, styled HTML multi-index file table
+        ├──▶ ui_explorer_table.display_explorer_table()
+        │         Builds detailed, styled HTML multi-index file table
+        │
+        └──▶ session_state['explorer_available_files' / 'explorer_row_lookup']
+                  Publishes the filtered, sorted file list for the sidebar
+                  loader on the Viewer and Analysis tabs (no widget rendered)
 
 
 ---------------------------------------------------------------------
@@ -142,6 +146,7 @@ If you need to change font sizes, button colors, or spacing, adjust the "Design 
 | `v_`    | File Data Viewer tab (persisted in `viewer_state`) |
 | `a_`    | Statistical Analysis tab (persisted in `analysis_state`) |
 | `ui_`   | Dataset Explorer tab (persisted in `explorer_state`) |
+| `explorer_` | Cross-tab: filtered results published by Tab 1 and read by the sidebar loader on Tabs 2 and 3 |
 | `_`     | Internal one-shot signals (auto-cleared with `.pop()`) |
 
 
