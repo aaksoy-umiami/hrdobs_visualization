@@ -282,13 +282,9 @@ def _build_explorer_table_html(final_df, unit, sort_col_internal, is_asc, row_nu
     def make_storm_hover(val):
         if '|||' in str(val):
             name, filename = str(val).split('|||')
-            
-            # Create a link that reloads the app with a specific query parameter
-            # target="_self" ensures it stays in the same browser tab
-            return (f'<a href="?fetch={filename}" target="_self" '
-                    f'title="Click to instantly load {filename} in Plotter" '
-                    f'style="cursor:pointer; border-bottom: 1px dotted #ccc; color: #1f77b4; text-decoration: none;">'
-                    f'{name}</a>')
+            return (f'<span title="{filename}" '
+                    f'style="cursor:help; border-bottom: 1px dotted #ccc;">'
+                    f'{name}</span>')
         return val
 
     fmt_map[('Basic Data', 'Storm')] = make_storm_hover
