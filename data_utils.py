@@ -527,6 +527,9 @@ def compute_vert_bounds(data_pack):
             bounds[grp] = grp_bounds
     data_pack['vert_bounds'] = bounds
 
+HDF5_SIGNATURE = b'\x89HDF\r\n\x1a\n'
+
+
 @st.cache_data(show_spinner=False)
 def fetch_hrdobs_file_from_ftp(filename: str) -> bytes:
     """
@@ -535,19 +538,33 @@ def fetch_hrdobs_file_from_ftp(filename: str) -> bytes:
     # Extract the 4-digit year from the filename to route to the correct yearly directory
     year_match = re.search(r'(19|20)\d{2}', filename)
     year = year_match.group(0) if year_match else ""
-    
+
     # Append the year directory to the path if successfully found
     dir_path = f"{year}/" if year else ""
-    
+
     # Construct the final FTP URL
     ftp_base_url = "ftp://ftp.aoml.noaa.gov/pub/hrd/data/hrdobs/"
     file_url = f"{ftp_base_url}{dir_path}{filename}"
-    
+
     try:
         # urllib.request natively handles anonymous FTP authentication
         # A 30-second timeout prevents the UI from hanging indefinitely on bad connections
         with urllib.request.urlopen(file_url, timeout=30) as response:
             file_bytes = response.read()
-        return file_bytes
     except Exception as e:
         raise RuntimeError(f"Could not download {filename} from the HRD archive. Error: {e}")
+
+    if not file_bytes:
+        raise RuntimeError(
+            f"Downloaded an empty response for {filename} from the HRD archive. "
+            "The file may not exist at the expected path."
+        )
+
+    if file_bytes[:8] != HDF5_SIGNATURE:
+        raise RuntimeError(
+            f"Downloaded {len(file_bytes)} bytes for {filename}, but the content is "
+            "not a valid HDF5 file (the HRD archive may have returned an error page "
+            "or the download was truncated). Please try again or upload the file manually."
+        )
+
+    return file_bytes
